@@ -242,13 +242,8 @@ function makeMapId() { return `map_${Date.now()}_${++_seq}`; }
 function loadStored() {
   try {
     const v2 = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (v2?.maps?.length) return v2;
-    const v1 = JSON.parse(localStorage.getItem(STORAGE_KEY_V1));
-    const id = makeMapId();
-    return {
-      maps: [{ id, name: "My Map", nodes: v1?.nodes || [], edges: v1?.edges || [], background: { ...DEFAULT_BG } }],
-      activeMapId: id,
-    };
+    if (v2) return v2; // may be new {maps,activeMapId} or legacy {nodes,edges} format
+    return JSON.parse(localStorage.getItem(STORAGE_KEY_V1)); // fall back to old key
   } catch { return null; }
 }
 
@@ -264,10 +259,27 @@ function dlBlob(content, filename, type) {
 }
 
 export default function MindMap() {
-  const stored = useRef(loadStored());
+  // One-time initialization from localStorage
+  const _init = useRef(null);
+  if (!_init.current) {
+    const raw = loadStored();
+    const initMaps = raw?.maps?.length
+      ? raw.maps
+      : [{ id: makeMapId(), name: "My Map", nodes: raw?.nodes || [], edges: raw?.edges || [], background: { ...DEFAULT_BG } }];
+    const initActiveId = (raw?.activeMapId && initMaps.some(m => m.id === raw.activeMapId))
+      ? raw.activeMapId : initMaps[0].id;
+    const initActiveMap = initMaps.find(m => m.id === initActiveId) || initMaps[0];
+    const initNodes = initActiveMap.nodes?.length ? initActiveMap.nodes : [DEFAULT_NODE];
+    const initEdges = initActiveMap.edges || [];
+    _init.current = { maps: initMaps, activeMapId: initActiveId, nodes: initNodes, edges: initEdges, background: initActiveMap.background || { ...DEFAULT_BG } };
+  }
+  const _i = _init.current;
 
-  const [nodes, setNodes] = useState(() => stored.current?.nodes || [DEFAULT_NODE]);
-  const [edges, setEdges] = useState(() => stored.current?.edges || []);
+  const [maps, setMaps] = useState(_i.maps);
+  const [activeMapId, setActiveMapId] = useState(_i.activeMapId);
+  const [nodes, setNodes] = useState(_i.nodes);
+  const [edges, setEdges] = useState(_i.edges);
+  const [background, setBackground] = useState(_i.background);
   const [selected, setSelected] = useState(null);
   const [pan, setPan] = useState({ x: 80, y: 60 });
   const [zoom, setZoom] = useState(1);
@@ -288,9 +300,10 @@ export default function MindMap() {
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selBox, setSelBox] = useState(null);
   const [hasClipboard, setHasClipboard] = useState(false);
+  const [renamingMapId, setRenamingMapId] = useState(null);
 
   // History
-  const hist = useRef([{ nodes: stored.current?.nodes || [DEFAULT_NODE], edges: stored.current?.edges || [] }]);
+  const hist = useRef([{ nodes: _i.nodes, edges: _i.edges }]);
   const histIdx = useRef(0);
   const [histVer, setHistVer] = useState(0);
 
@@ -303,6 +316,9 @@ export default function MindMap() {
   const selBoxStartRef = useRef(null);
 
   // Stable refs for touch handlers and deferred callbacks
+  const mapsRef = useRef(maps);
+  const backgroundRef = useRef(background);
+  const activeMapIdRef = useRef(activeMapId);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const panRef = useRef(pan);
@@ -488,10 +504,74 @@ export default function MindMap() {
     pushHistRef.current(allNodes, allEdges);
   }, []);
 
+  // ── Map management ────────────────────────────────────────────────────────────
+  const switchToMap = useCallback((newMapId) => {
+    if (newMapId === activeMapIdRef.current) return;
+    const newMap = mapsRef.current.find(m => m.id === newMapId);
+    if (!newMap) return;
+    setMaps(prev => prev.map(m =>
+      m.id === activeMapIdRef.current
+        ? { ...m, nodes: nodesRef.current, edges: edgesRef.current, background: backgroundRef.current }
+        : m
+    ));
+    setActiveMapId(newMapId);
+    setNodes(newMap.nodes?.length ? newMap.nodes : [DEFAULT_NODE]);
+    setEdges(newMap.edges || []);
+    setBackground(newMap.background || { ...DEFAULT_BG });
+    setSelected(null); setMultiSelected([]); setMultiSelectMode(false); setConnFrom(null);
+    hist.current = [{ nodes: newMap.nodes?.length ? newMap.nodes : [DEFAULT_NODE], edges: newMap.edges || [] }];
+    histIdx.current = 0;
+    setHistVer(v => v + 1);
+  }, []);
+
+  const createNewMap = useCallback(() => {
+    const newId = makeMapId();
+    const firstNode = { id: makeNodeId(), name: "Central Idea", body: "", x: 300, y: 220, w: 180, h: 44, showBody: true, showNeighbors: true };
+    const initNodes = [firstNode];
+    setMaps(prev => [
+      ...prev.map(m => m.id === activeMapIdRef.current
+        ? { ...m, nodes: nodesRef.current, edges: edgesRef.current, background: backgroundRef.current }
+        : m),
+      { id: newId, name: "New Map", nodes: initNodes, edges: [], background: { ...DEFAULT_BG } },
+    ]);
+    setActiveMapId(newId);
+    setNodes(initNodes);
+    setEdges([]);
+    setBackground({ ...DEFAULT_BG });
+    setSelected(null); setMultiSelected([]); setMultiSelectMode(false); setConnFrom(null);
+    hist.current = [{ nodes: initNodes, edges: [] }];
+    histIdx.current = 0;
+    setHistVer(v => v + 1);
+  }, []);
+
+  const deleteMap = useCallback((mapId) => {
+    if (mapsRef.current.length <= 1) return;
+    const newMaps = mapsRef.current.filter(m => m.id !== mapId);
+    setMaps(newMaps);
+    if (mapId === activeMapIdRef.current) {
+      const nextMap = newMaps[0];
+      setActiveMapId(nextMap.id);
+      setNodes(nextMap.nodes?.length ? nextMap.nodes : [DEFAULT_NODE]);
+      setEdges(nextMap.edges || []);
+      setBackground(nextMap.background || { ...DEFAULT_BG });
+      setSelected(null); setMultiSelected([]); setMultiSelectMode(false); setConnFrom(null);
+      hist.current = [{ nodes: nextMap.nodes?.length ? nextMap.nodes : [DEFAULT_NODE], edges: nextMap.edges || [] }];
+      histIdx.current = 0;
+      setHistVer(v => v + 1);
+    }
+  }, []);
+
+  const renameMap = useCallback((mapId, name) => {
+    setMaps(prev => prev.map(m => m.id === mapId ? { ...m, name } : m));
+  }, []);
+
   // ── Effects ───────────────────────────────────────────────────────────────────
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges }));
-  }, [nodes, edges]);
+    const updatedMaps = maps.map(m =>
+      m.id === activeMapId ? { ...m, nodes, edges, background } : m
+    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ maps: updatedMaps, activeMapId }));
+  }, [nodes, edges, background, maps, activeMapId]);
 
   useEffect(() => { setAddConnInput(""); setShowDrop(false); }, [selected?.id]);
   useEffect(() => { if (selected) setSidebarTab("edit"); }, [selected]);
@@ -520,6 +600,9 @@ export default function MindMap() {
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
   }, []);
 
+  useEffect(() => { mapsRef.current = maps; }, [maps]);
+  useEffect(() => { backgroundRef.current = background; }, [background]);
+  useEffect(() => { activeMapIdRef.current = activeMapId; }, [activeMapId]);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
   useEffect(() => { panRef.current = pan; }, [pan]);
@@ -905,6 +988,7 @@ export default function MindMap() {
       <div className="app">
         <div
           className={`canvas-wrap${isPanning ? " panning" : ""}${connFrom ? " connecting" : ""}`}
+          style={{ backgroundColor: background.bgColor || "#0e0f11" }}
           ref={canvasRef}
           onMouseDown={onCanvasMouseDown}
           onMouseMove={onCanvasMouseMove}
@@ -913,14 +997,24 @@ export default function MindMap() {
           onMouseLeave={() => { canvasHoveredRef.current = false; onCanvasMouseUp(); }}
           onWheel={onWheel}
         >
-          <svg className="grid-bg" width="100%" height="100%">
-            <defs>
-              <pattern id="grid" width={20*zoom} height={20*zoom} patternUnits="userSpaceOnUse" x={pan.x%(20*zoom)} y={pan.y%(20*zoom)}>
-                <circle cx={20*zoom} cy={20*zoom} r="0.8" fill="#1e2023"/>
-              </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill="url(#grid)"/>
-          </svg>
+          {background.imageUrl
+            ? <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${background.imageUrl})`, backgroundSize: "cover", backgroundPosition: "center", pointerEvents: "none" }}/>
+            : background.type !== "plain" && (
+                <svg className="grid-bg" width="100%" height="100%">
+                  <defs>
+                    {background.type === "grid"
+                      ? <pattern id="bg-pat" width={20*zoom} height={20*zoom} patternUnits="userSpaceOnUse" x={pan.x%(20*zoom)} y={pan.y%(20*zoom)}>
+                          <path d={`M ${20*zoom} 0 L 0 0 0 ${20*zoom}`} fill="none" stroke={background.dotColor || "#2a2c30"} strokeWidth="0.5"/>
+                        </pattern>
+                      : <pattern id="bg-pat" width={20*zoom} height={20*zoom} patternUnits="userSpaceOnUse" x={pan.x%(20*zoom)} y={pan.y%(20*zoom)}>
+                          <circle cx={20*zoom} cy={20*zoom} r="0.8" fill={background.dotColor || "#2a2c30"}/>
+                        </pattern>
+                    }
+                  </defs>
+                  <rect width="100%" height="100%" fill="url(#bg-pat)"/>
+                </svg>
+              )
+          }
 
           <div className="canvas-inner" style={{ transform: `translate3d(${pan.x}px,${pan.y}px,0) scale(${zoom})` }}>
             <svg className="edges-svg">
@@ -983,6 +1077,7 @@ export default function MindMap() {
                       ))}
                     </div>
                   )}
+                  {n.imageUrl && <img src={n.imageUrl} className="node-img" alt="" draggable={false} onError={e => { e.target.style.display = "none"; }}/>}
                   {["top","bottom","left","right"].map(p => (
                     <div key={p} className={`port ${p}`} onClick={e => onPortClick(e, n.id, p)}/>
                   ))}
@@ -1052,7 +1147,7 @@ export default function MindMap() {
           <div className="sidebar-resize" onMouseDown={e => { resizing.current = { startX: e.clientX, startWidth: sidebarWidth }; e.preventDefault(); }}/>
 
           <div className="sidebar-header">
-            <span className="sidebar-title">{sidebarTab === "help" ? "Help & Docs" : multiSelected.length > 0 ? `${multiSelected.length} Nodes` : selectedNode ? "Node" : selectedEdge ? "Edge" : "Mind Map"}</span>
+            <span className="sidebar-title">{sidebarTab === "help" ? "Help & Docs" : sidebarTab === "maps" ? "Maps" : multiSelected.length > 0 ? `${multiSelected.length} Nodes` : selectedNode ? "Node" : selectedEdge ? "Edge" : "Mind Map"}</span>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               {selected && sidebarTab === "edit" && multiSelected.length === 0 && <button className="btn danger" style={{ padding: "3px 8px", fontSize: "10px" }} onClick={deleteSelected}>delete</button>}
               {isMobile && <button style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 18, padding: "0 2px", lineHeight: 1 }} onClick={() => setSidebarOpen(false)}>×</button>}
@@ -1060,6 +1155,7 @@ export default function MindMap() {
           </div>
           <div className="sidebar-tabs">
             <button className={`sidebar-tab${sidebarTab === "edit" ? " active" : ""}`} onClick={() => setSidebarTab("edit")}>Edit</button>
+            <button className={`sidebar-tab${sidebarTab === "maps" ? " active" : ""}`} onClick={() => setSidebarTab("maps")}>Maps</button>
             <button className={`sidebar-tab${sidebarTab === "help" ? " active" : ""}`} onClick={() => setSidebarTab("help")}>Help</button>
           </div>
 
@@ -1076,6 +1172,10 @@ export default function MindMap() {
                 <div className="field">
                   <label>Body / Notes</label>
                   <textarea placeholder="Leave empty to make this a header node…" value={selectedNode.body} onChange={e => updateNode(selectedNode.id, "body", e.target.value)}/>
+                </div>
+                <div className="field">
+                  <label>Image URL</label>
+                  <input value={selectedNode.imageUrl || ""} placeholder="https://…" onChange={e => updateNode(selectedNode.id, "imageUrl", e.target.value)}/>
                 </div>
 
                 <div className="section-label">Display</div>
@@ -1276,6 +1376,70 @@ export default function MindMap() {
                 </label>
                 <div style={{ fontSize: 10, color: "var(--muted)", lineHeight: 1.5 }}>Merges with current map. Imported nodes are placed beside existing ones if they overlap.</div>
 
+              </>
+            )}
+
+            {/* ── Maps tab ── */}
+            {sidebarTab === "maps" && (
+              <>
+                <div className="section-label" style={{ marginTop: 0, borderTop: "none", paddingTop: 0 }}>Your maps</div>
+                {maps.map(m => (
+                  <div key={m.id} className={`map-item${m.id === activeMapId ? " active" : ""}`} onClick={() => switchToMap(m.id)}>
+                    <div className="map-item-name">
+                      {renamingMapId === m.id
+                        ? <input
+                            autoFocus
+                            value={m.name}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => renameMap(m.id, e.target.value)}
+                            onBlur={() => setRenamingMapId(null)}
+                            onKeyDown={e => { if (e.key === "Enter" || e.key === "Escape") setRenamingMapId(null); e.stopPropagation(); }}
+                          />
+                        : m.name
+                      }
+                    </div>
+                    {renamingMapId !== m.id && (
+                      <button className="btn" style={{ padding: "2px 7px", fontSize: 10, flexShrink: 0 }} onClick={e => { e.stopPropagation(); setRenamingMapId(m.id); }}>✎</button>
+                    )}
+                    {maps.length > 1 && (
+                      <button className="btn danger" style={{ padding: "2px 7px", fontSize: 10, flexShrink: 0 }} onClick={e => { e.stopPropagation(); deleteMap(m.id); }}>✕</button>
+                    )}
+                  </div>
+                ))}
+                <button className="btn primary" style={{ width: "100%" }} onClick={createNewMap}>+ New Map</button>
+
+                <div className="section-label">Background</div>
+                <div className="field">
+                  <label>Type</label>
+                  <div className="bg-type-row">
+                    {["dots", "grid", "plain"].map(t => (
+                      <button key={t} className={`bg-type-btn${background.type === t ? " active" : ""}`} onClick={() => setBackground(b => ({ ...b, type: t }))}>{t}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="field">
+                  <label>Background color</label>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input type="color" value={background.bgColor || "#0e0f11"} onChange={e => setBackground(b => ({ ...b, bgColor: e.target.value }))} style={{ width: 32, height: 28, padding: 2, border: "1px solid var(--border)", borderRadius: 4, background: "var(--surface2)", cursor: "pointer", flexShrink: 0 }}/>
+                    <input value={background.bgColor || "#0e0f11"} onChange={e => setBackground(b => ({ ...b, bgColor: e.target.value }))} style={{ flex: 1, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 4, padding: "5px 8px", fontSize: 12, color: "var(--text)", fontFamily: "var(--mono)", outline: "none" }}/>
+                  </div>
+                </div>
+                {background.type !== "plain" && (
+                  <div className="field">
+                    <label>{background.type === "dots" ? "Dot color" : "Grid color"}</label>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <input type="color" value={background.dotColor || "#2a2c30"} onChange={e => setBackground(b => ({ ...b, dotColor: e.target.value }))} style={{ width: 32, height: 28, padding: 2, border: "1px solid var(--border)", borderRadius: 4, background: "var(--surface2)", cursor: "pointer", flexShrink: 0 }}/>
+                      <input value={background.dotColor || "#2a2c30"} onChange={e => setBackground(b => ({ ...b, dotColor: e.target.value }))} style={{ flex: 1, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 4, padding: "5px 8px", fontSize: 12, color: "var(--text)", fontFamily: "var(--mono)", outline: "none" }}/>
+                    </div>
+                  </div>
+                )}
+                <div className="field">
+                  <label>Background image URL</label>
+                  <input value={background.imageUrl || ""} placeholder="https://…" onChange={e => setBackground(b => ({ ...b, imageUrl: e.target.value }))}/>
+                  {background.imageUrl && (
+                    <button className="btn" style={{ fontSize: 10 }} onClick={() => setBackground(b => ({ ...b, imageUrl: "" }))}>✕ Remove image</button>
+                  )}
+                </div>
               </>
             )}
 
