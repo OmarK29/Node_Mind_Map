@@ -14,7 +14,7 @@ Some uses: brainstorming, planning, flowing a debate, annotating a paper.
 - Per-node toggles: show body, show neighbors list
 
 ### Connections
-- Click a port dot on any node to start a connection, click another node or port to complete it — no mode switching
+- Click a port dot on any node to start a connection, click another node or port to complete it
 - Add connections by typing a node name or ID in the sidebar (autocomplete dropdown)
 - Connections have an optional **label** and optional **relation** labels (one per end, e.g. parent → child)
 - Relation presets: parent/child, higher/lower, left/right, cause/effect, before/after
@@ -31,7 +31,7 @@ Some uses: brainstorming, planning, flowing a debate, annotating a paper.
 - Move, delete, copy, paste, or export the whole selection at once
 
 ### Multiple Maps
-- Create, rename, and delete maps — all stored locally
+- Create, rename, and delete maps that are all stored locally
 - Switch between maps; each saves its own state automatically
 
 ### Background (per map)
