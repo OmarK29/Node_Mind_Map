@@ -360,6 +360,11 @@ export default function MindMap() {
       try {
         const data = JSON.parse(ev.target.result);
         if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) throw new Error();
+
+        const curNodes = nodesRef.current;
+        const curEdges = edgesRef.current;
+
+        // Normalize positions for nodes missing x/y
         const normalized = data.nodes.map((n, i) => ({
           showBody: true, showNeighbors: true, w: 180, h: 44,
           ...n,
@@ -367,10 +372,51 @@ export default function MindMap() {
           x: n.x ?? (80 + (i % 4) * 230),
           y: n.y ?? (80 + Math.floor(i / 4) * 150),
         }));
-        setNodes(normalized);
-        setEdges(data.edges);
+
+        // Remap any IDs that collide with existing nodes
+        const existingIds = new Set(curNodes.map(n => n.id));
+        const idMap = {};
+        const remapped = normalized.map(n => {
+          if (existingIds.has(n.id)) {
+            const newId = makeNodeId();
+            idMap[n.id] = newId;
+            return { ...n, id: newId };
+          }
+          return n;
+        });
+
+        // Remap edge node references; always generate fresh edge IDs
+        const allIds = new Set([...curNodes.map(n => n.id), ...remapped.map(n => n.id)]);
+        const newEdges = data.edges
+          .map(e => ({ ...e, id: makeEdgeId(), src: idMap[e.src] ?? e.src, tgt: idMap[e.tgt] ?? e.tgt }))
+          .filter(e => allIds.has(e.src) && allIds.has(e.tgt));
+
+        // Shift imported group right just enough so bounding boxes don't overlap
+        let shifted = remapped;
+        if (curNodes.length > 0) {
+          const exMaxX = Math.max(...curNodes.map(n => n.x + (n.w || 180)));
+          const exMinY = Math.min(...curNodes.map(n => n.y));
+          const exMaxY = Math.max(...curNodes.map(n => n.y + (n.h || 44)));
+          const imMinX = Math.min(...remapped.map(n => n.x));
+          const imMaxX = Math.max(...remapped.map(n => n.x + (n.w || 180)));
+          const imMinY = Math.min(...remapped.map(n => n.y));
+          const imMaxY = Math.max(...remapped.map(n => n.y + (n.h || 44)));
+          const exMinX = Math.min(...curNodes.map(n => n.x));
+          const overlapX = imMinX < exMaxX && imMaxX > exMinX;
+          const overlapY = imMinY < exMaxY && imMaxY > exMinY;
+          if (overlapX && overlapY) {
+            const dx = exMaxX + 80 - imMinX;
+            const dy = exMinY - imMinY;
+            shifted = remapped.map(n => ({ ...n, x: n.x + dx, y: n.y + dy }));
+          }
+        }
+
+        const newNodes = [...curNodes, ...shifted];
+        const mergedEdges = [...curEdges, ...newEdges];
+        setNodes(newNodes);
+        setEdges(mergedEdges);
         setSelected(null);
-        pushHistRef.current(normalized, data.edges);
+        pushHistRef.current(newNodes, mergedEdges);
       } catch { alert("Invalid file — expected a mindmap JSON export."); }
     };
     reader.readAsText(file);
@@ -1094,7 +1140,7 @@ export default function MindMap() {
                   ↑ Import JSON
                   <input type="file" accept=".json" hidden onChange={e => { if (e.target.files[0]) { importJSON(e.target.files[0]); e.target.value = ""; } }}/>
                 </label>
-                <div style={{ fontSize: 10, color: "var(--muted)", lineHeight: 1.5 }}>Replaces the current map. Export first to save a backup.</div>
+                <div style={{ fontSize: 10, color: "var(--muted)", lineHeight: 1.5 }}>Merges with current map. Imported nodes are placed beside existing ones if they overlap.</div>
 
               </>
             )}
@@ -1107,7 +1153,7 @@ export default function MindMap() {
                   <div className="help-tip"><b>1.</b> Click <b>+ Node</b> in the toolbar (or press <b>N</b> while hovering the canvas) to add nodes.</div>
                   <div className="help-tip"><b>2.</b> Hover a node to reveal its port dots. Click a port to start a connection, then click any other node or port to complete it. Esc cancels.</div>
                   <div className="help-tip"><b>3.</b> Click any node or connection to select it and edit it in this sidebar.</div>
-                  <div className="help-tip"><b>4.</b> Export as JSON to back up or hand off to an AI. Import JSON to restore.</div>
+                  <div className="help-tip"><b>4.</b> Export as JSON to back up or hand off to an AI. Import merges into the current map — imported nodes are shifted right if they overlap with existing ones.</div>
                 </div>
 
                 <div className="section-label">Keyboard shortcuts</div>
