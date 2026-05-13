@@ -23,7 +23,7 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
 
 .app { display: flex; height: 100vh; height: 100dvh; width: 100vw; position: relative; }
 
-.canvas-wrap { flex: 1; position: relative; overflow: hidden; cursor: default; background: var(--bg); touch-action: none; -webkit-tap-highlight-color: transparent; }
+.canvas-wrap { flex: 1; position: relative; overflow: hidden; cursor: default; touch-action: none; -webkit-tap-highlight-color: transparent; }
 .canvas-wrap.panning { cursor: grabbing; }
 .canvas-wrap.connecting { cursor: crosshair; }
 .canvas-wrap.connecting .node { cursor: pointer; }
@@ -52,6 +52,18 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
 .node.multi-selected { border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2), 0 2px 16px rgba(122,184,200,0.12); }
 
 .sel-box { position: absolute; border: 1.5px dashed var(--accent2); background: rgba(122,184,200,0.06); border-radius: 3px; pointer-events: none; z-index: 50; }
+
+.node-img { width: 100%; display: block; max-height: 180px; object-fit: cover; border-radius: 0 0 5px 5px; }
+
+.map-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 5px; cursor: pointer; transition: border-color 0.15s; }
+.map-item:hover { border-color: var(--border2); }
+.map-item.active { border-color: var(--accent); background: rgba(200,185,122,0.06); }
+.map-item-name { flex: 1; font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.map-item-name input { background: transparent; border: none; outline: none; color: var(--text); font-size: 12px; width: 100%; font-family: 'DM Sans', sans-serif; }
+.bg-type-row { display: flex; gap: 4px; }
+.bg-type-btn { flex: 1; padding: 5px 2px; border-radius: 4px; border: 1px solid var(--border2); background: var(--surface2); color: var(--muted); font-size: 10px; cursor: pointer; text-align: center; transition: all 0.15s; font-family: 'DM Sans', sans-serif; }
+.bg-type-btn:hover { color: var(--text); }
+.bg-type-btn.active { border-color: var(--accent); color: var(--accent); }
 
 .node-name { padding: 8px 12px 7px; font-size: 12px; font-weight: 500; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 6px; }
 .node.header-node .node-name { color: var(--accent2); }
@@ -193,7 +205,9 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
 }
 `;
 
-const STORAGE_KEY = "mindmap_v1";
+const STORAGE_KEY = "mindmap_v2";
+const STORAGE_KEY_V1 = "mindmap_v1";
+const DEFAULT_BG = { type: "dots", bgColor: "#0e0f11", dotColor: "#2a2c30", imageUrl: "" };
 
 let _seq = 0;
 function makeNodeId() {
@@ -223,8 +237,19 @@ function cubicPath(x1, y1, x2, y2) {
   return `M ${x1} ${y1} C ${x1+dx} ${y1}, ${x2-dx} ${y2}, ${x2} ${y2}`;
 }
 
+function makeMapId() { return `map_${Date.now()}_${++_seq}`; }
+
 function loadStored() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; }
+  try {
+    const v2 = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (v2?.maps?.length) return v2;
+    const v1 = JSON.parse(localStorage.getItem(STORAGE_KEY_V1));
+    const id = makeMapId();
+    return {
+      maps: [{ id, name: "My Map", nodes: v1?.nodes || [], edges: v1?.edges || [], background: { ...DEFAULT_BG } }],
+      activeMapId: id,
+    };
+  } catch { return null; }
 }
 
 const DEFAULT_NODE = { id: "n_default", name: "Central Idea", body: "", x: 300, y: 220, w: 180, h: 44, showBody: true, showNeighbors: true };
