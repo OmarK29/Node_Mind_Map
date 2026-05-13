@@ -260,7 +260,9 @@ export default function MindMap() {
   const [sidebarTab, setSidebarTab] = useState("edit");
   const [copiedPrompt, setCopiedPrompt] = useState(null);
   const [multiSelected, setMultiSelected] = useState([]);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selBox, setSelBox] = useState(null);
+  const [hasClipboard, setHasClipboard] = useState(false);
 
   // History
   const hist = useRef([{ nodes: stored.current?.nodes || [DEFAULT_NODE], edges: stored.current?.edges || [] }]);
@@ -437,6 +439,30 @@ export default function MindMap() {
     reader.readAsText(file);
   }, []);
 
+  const doPaste = useCallback((explicitPos) => {
+    if (!clipboardRef.current) return;
+    const clip = clipboardRef.current;
+    const clipNodes = clip.nodes || [clip];
+    const clipEdges = clip.edges || [];
+    if (clipNodes.length === 0) return;
+    const pos = explicitPos ?? (() => {
+      const el = canvasRef.current;
+      const vw = el ? el.clientWidth : 800, vh = el ? el.clientHeight : 600;
+      return { x: (-panRef.current.x + vw / 2) / zoomRef.current, y: (-panRef.current.y + vh / 2) / zoomRef.current };
+    })();
+    const cx = clipNodes.reduce((s, n) => s + n.x + (n.w || 180) / 2, 0) / clipNodes.length;
+    const cy = clipNodes.reduce((s, n) => s + n.y + (n.h || 44) / 2, 0) / clipNodes.length;
+    const idMap = {};
+    const newNodes = clipNodes.map(n => { const id = makeNodeId(); idMap[n.id] = id; return { ...n, id, x: n.x + (pos.x - cx), y: n.y + (pos.y - cy) }; });
+    const newEdges = clipEdges.map(ed => ({ ...ed, id: makeEdgeId(), src: idMap[ed.src] ?? ed.src, tgt: idMap[ed.tgt] ?? ed.tgt }));
+    const allNodes = [...nodesRef.current, ...newNodes];
+    const allEdges = [...edgesRef.current, ...newEdges];
+    setNodes(allNodes); setEdges(allEdges);
+    if (newNodes.length === 1) { setSelected({ type: "node", id: newNodes[0].id }); setMultiSelected([]); setMultiSelectMode(false); }
+    else { setMultiSelected(newNodes.map(n => n.id)); setSelected(null); setMultiSelectMode(false); }
+    pushHistRef.current(allNodes, allEdges);
+  }, []);
+
   // ── Effects ───────────────────────────────────────────────────────────────────
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges }));
@@ -583,36 +609,16 @@ export default function MindMap() {
           const n = nodesRef.current.find(n => n.id === selected.id);
           if (n) clipboardRef.current = { nodes: [n], edges: [] };
         }
+        if (clipboardRef.current) setHasClipboard(true);
         return;
       }
-      if (mod && e.key === "v" && !e.target.matches("input,textarea") && clipboardRef.current) {
+      if (mod && e.key === "v" && !e.target.matches("input,textarea")) {
         e.preventDefault();
-        const clip = clipboardRef.current;
-        const clipNodes = clip.nodes || [clip];
-        const clipEdges = clip.edges || [];
-        if (clipNodes.length === 0) return;
-        const pos = mouseCanvasRef.current;
-        const cx = clipNodes.reduce((s, n) => s + n.x + (n.w||180)/2, 0) / clipNodes.length;
-        const cy = clipNodes.reduce((s, n) => s + n.y + (n.h||44)/2, 0) / clipNodes.length;
-        const idMap = {};
-        const newNodes = clipNodes.map(n => {
-          const newId = makeNodeId();
-          idMap[n.id] = newId;
-          return { ...n, id: newId, x: n.x + (pos.x - cx), y: n.y + (pos.y - cy) };
-        });
-        const newEdges = clipEdges.map(ed => ({
-          ...ed, id: makeEdgeId(), src: idMap[ed.src] ?? ed.src, tgt: idMap[ed.tgt] ?? ed.tgt,
-        }));
-        const allNodes = [...nodesRef.current, ...newNodes];
-        const allEdges = [...edgesRef.current, ...newEdges];
-        setNodes(allNodes); setEdges(allEdges);
-        if (newNodes.length === 1) { setSelected({ type: "node", id: newNodes[0].id }); setMultiSelected([]); }
-        else { setMultiSelected(newNodes.map(n => n.id)); setSelected(null); }
-        pushHistRef.current(allNodes, allEdges);
+        doPaste(mouseCanvasRef.current);
         return;
       }
       if (e.key === "Escape") {
-        setConnFrom(null); setSelected(null); setMultiSelected([]);
+        setConnFrom(null); setSelected(null); setMultiSelected([]); setMultiSelectMode(false);
         setSelBox(null); selBoxStartRef.current = null;
         return;
       }
@@ -639,7 +645,7 @@ export default function MindMap() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, multiSelected, undo, redo]);
+  }, [selected, multiSelected, undo, redo, doPaste]);
 
   // ── Canvas / node handlers ────────────────────────────────────────────────────
   function getAbsPortPos(node, port) {
@@ -665,7 +671,7 @@ export default function MindMap() {
       setSelected(null);
     } else {
       setIsPanning(true); setPanStart({ x: e.clientX-pan.x, y: e.clientY-pan.y }); setSelected(null);
-      setMultiSelected([]);
+      setMultiSelected([]); setMultiSelectMode(false);
     }
   }, [pan, zoom, connFrom]);
 
@@ -727,7 +733,7 @@ export default function MindMap() {
   const onNodeMouseDown = useCallback((e, nodeId) => {
     if (connFrom) return;
     e.stopPropagation();
-    if (e.shiftKey) {
+    if (e.shiftKey || multiSelectMode) {
       setSelected(null);
       setMultiSelected(prev => prev.includes(nodeId) ? prev.filter(id => id !== nodeId) : [...prev, nodeId]);
       return;
@@ -1108,6 +1114,27 @@ export default function MindMap() {
                   <button className="btn" style={{ flex: 1 }} onClick={() => exportJSON(true)}>↓ JSON</button>
                   <button className="btn" style={{ flex: 1 }} onClick={() => exportCSV(true)}>↓ CSV</button>
                 </div>
+
+                <div className="section-label">Copy / Multi-select</div>
+                <div className="btn-row">
+                  <button className="btn" style={{ flex: 1 }} onClick={() => {
+                    const n = selectedNode;
+                    if (n) { clipboardRef.current = { nodes: [n], edges: [] }; setHasClipboard(true); }
+                  }}>Copy node</button>
+                  <button
+                    className={`btn${multiSelectMode ? " primary" : ""}`}
+                    style={{ flex: 1 }}
+                    onClick={() => {
+                      if (!multiSelectMode) {
+                        setMultiSelected(prev => prev.includes(selectedNode.id) ? prev : [...prev, selectedNode.id]);
+                        setMultiSelectMode(true);
+                        setSelected(null);
+                      } else {
+                        setMultiSelected([]); setMultiSelectMode(false);
+                      }
+                    }}
+                  >{multiSelectMode ? "◉ Selecting…" : "◎ Multi-select"}</button>
+                </div>
               </>
             )}
 
@@ -1151,22 +1178,48 @@ export default function MindMap() {
             {sidebarTab === "edit" && multiSelected.length > 0 && (
               <>
                 <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.7 }}>
-                  <span style={{ color: "var(--text)" }}>{multiSelected.length}</span> nodes &nbsp;·&nbsp; <span style={{ color: "var(--text)" }}>{selectionEdgeCount}</span> connections between them
+                  <span style={{ color: "var(--text)" }}>{multiSelected.length}</span> nodes &nbsp;·&nbsp; <span style={{ color: "var(--text)" }}>{selectionEdgeCount}</span> connections
                 </div>
-                <div style={{ fontSize: 10, color: "var(--muted)" }}>Shift+click to add/remove · Shift+drag to redraw box</div>
+                <div style={{ fontSize: 10, color: "var(--muted)" }}>
+                  {multiSelectMode ? "◉ Tap any node to add or remove it" : "Shift+click or Shift+drag to adjust"}
+                </div>
+
+                <div className="section-label">Copy / Paste</div>
+                <div className="btn-row">
+                  <button className="btn" style={{ flex: 1 }} onClick={() => {
+                    const ids = new Set(multiSelected);
+                    clipboardRef.current = {
+                      nodes: nodes.filter(n => ids.has(n.id)),
+                      edges: edges.filter(e => ids.has(e.src) && ids.has(e.tgt)),
+                    };
+                    setHasClipboard(true);
+                  }}>Copy</button>
+                  <button className="btn" style={{ flex: 1 }} disabled={!hasClipboard} onClick={() => doPaste()}>Paste</button>
+                </div>
+
                 <div className="section-label">Export selection</div>
                 <div className="btn-row">
                   <button className="btn" style={{ flex: 1 }} onClick={() => exportJSON(true)}>↓ JSON</button>
                   <button className="btn" style={{ flex: 1 }} onClick={() => exportCSV(true)}>↓ CSV</button>
                 </div>
-                <div style={{ fontSize: 10, color: "var(--muted)" }}>⌘C to copy · ⌘V to paste at cursor · Delete to remove</div>
+
+                <div className="section-label" style={{ marginTop: 8 }}/>
+                <button className="btn" style={{ width: "100%" }} onClick={() => { setMultiSelected([]); setMultiSelectMode(false); }}>
+                  {multiSelectMode ? "◉ End selection mode" : "✕ Clear selection"}
+                </button>
               </>
             )}
 
             {/* ── Global settings + export/import ── */}
             {sidebarTab === "edit" && !selected && multiSelected.length === 0 && (
               <>
-                <div className="section-label" style={{ marginTop: 0, borderTop: "none", paddingTop: 0 }}>Global display</div>
+                {hasClipboard && (
+                  <>
+                    <div className="section-label" style={{ marginTop: 0, borderTop: "none", paddingTop: 0 }}>Clipboard</div>
+                    <button className="btn" style={{ width: "100%" }} onClick={() => doPaste()}>Paste at view centre</button>
+                  </>
+                )}
+                <div className="section-label" style={{ marginTop: 0, borderTop: hasClipboard ? undefined : "none", paddingTop: 0 }}>Global display</div>
                 <div className="toggle-group">
                   {[
                     ["body", "Show body on all nodes"],
@@ -1219,6 +1272,7 @@ export default function MindMap() {
                     ["⌘C / ⌘V", "Copy / paste node at cursor"],
                     ["Shift + drag", "Draw selection box (multi-select)"],
                     ["Shift + click node", "Add / remove node from selection"],
+                    ["◎ Multi-select btn", "Tap-to-select mode (sidebar, great for mobile)"],
                     ["Delete / ⌫", "Delete selected node, edge, or group"],
                     ["⌘Z", "Undo"],
                     ["⌘⇧Z / ⌘Y", "Redo"],
