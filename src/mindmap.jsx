@@ -4,7 +4,7 @@ const FONTS = `@import url('https://fonts.googleapis.com/css2?family=DM+Mono:ita
 
 const STYLES = `
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; overflow: hidden; height: 100vh; }
+body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; overflow: hidden; height: 100vh; height: 100dvh; }
 
 :root {
   --bg: #0e0f11;
@@ -21,7 +21,7 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
   --mono: 'DM Mono', monospace;
 }
 
-.app { display: flex; height: 100vh; width: 100vw; position: relative; }
+.app { display: flex; height: 100vh; height: 100dvh; width: 100vw; position: relative; }
 
 .canvas-wrap { flex: 1; position: relative; overflow: hidden; cursor: default; background: var(--bg); touch-action: none; -webkit-tap-highlight-color: transparent; }
 .canvas-wrap.panning { cursor: grabbing; }
@@ -289,7 +289,7 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
   .toolbar {
     left: 8px; right: 8px; transform: none;
     overflow-x: auto; justify-content: flex-start;
-    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
     scrollbar-width: none;
   }
   .toolbar::-webkit-scrollbar { display: none; }
