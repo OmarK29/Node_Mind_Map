@@ -23,7 +23,7 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
 
 .app { display: flex; height: 100vh; width: 100vw; position: relative; }
 
-.canvas-wrap { flex: 1; position: relative; overflow: hidden; cursor: default; background: var(--bg); }
+.canvas-wrap { flex: 1; position: relative; overflow: hidden; cursor: default; background: var(--bg); touch-action: none; -webkit-tap-highlight-color: transparent; }
 .canvas-wrap.panning { cursor: grabbing; }
 .canvas-wrap.connect-mode { cursor: crosshair; }
 .canvas-wrap.connect-mode .node { cursor: pointer; }
@@ -254,6 +254,51 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
 .empty-hint p { font-size: 13px; color: var(--muted); }
 
 .connecting-preview { stroke: var(--accent2); stroke-dasharray: 6 4; stroke-width: 1.5; fill: none; pointer-events: none; }
+
+/* Mobile sidebar toggle */
+.sidebar-toggle {
+  display: none;
+  position: absolute; top: 12px; right: 12px; z-index: 50;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 5px; width: 38px; height: 38px;
+  color: var(--muted); font-size: 18px; cursor: pointer;
+  align-items: center; justify-content: center;
+}
+
+/* Mobile */
+@media (max-width: 767px) {
+  .sidebar-toggle { display: flex; }
+  .sidebar {
+    position: absolute; right: 0; top: 0; height: 100%; z-index: 100;
+    width: min(300px, 88vw) !important;
+    transform: translateX(101%);
+    transition: transform 0.25s ease;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.7);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-resize { display: none; }
+  .port { width: 20px; height: 20px; }
+  .port.top    { top: -10px; }
+  .port.bottom { bottom: -10px; }
+  .port.left   { left: -10px; }
+  .port.right  { right: -10px; }
+  .port.top:hover    { transform: translateX(-50%) scale(1.2); }
+  .port.bottom:hover { transform: translateX(-50%) scale(1.2); }
+  .port.left:hover   { transform: translateY(-50%) scale(1.2); }
+  .port.right:hover  { transform: translateY(-50%) scale(1.2); }
+  .toolbar {
+    left: 8px; right: 8px; transform: none;
+    overflow-x: auto; justify-content: flex-start;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    scrollbar-width: none;
+  }
+  .toolbar::-webkit-scrollbar { display: none; }
+  .tool-btn { padding: 10px 14px; font-size: 12px; white-space: nowrap; }
+  .infobar {
+    top: calc(8px + env(safe-area-inset-top, 0px));
+    font-size: 9px; padding: 4px 8px; gap: 8px;
+  }
+}
 `;
 
 const STORAGE_KEY = "mindmap_v1";
@@ -317,10 +362,18 @@ export default function MindMap() {
   const [addConnInput, setAddConnInput] = useState("");
   const [showDrop, setShowDrop] = useState(false);
   const [globalShow, setGlobalShow] = useState({ body: true, neighbors: true, neighborPath: false, neighborRel: false, nodeIds: false });
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const canvasRef = useRef(null);
   const nodeRefs = useRef({});
   const resizing = useRef(null); // { startX, startWidth }
+
+  // Refs for touch handlers (avoids stale closures in non-React event listeners)
+  const toolRef = useRef(tool);
+  const nodesRef = useRef(nodes);
+  const panRef = useRef(pan);
+  const zoomRef = useRef(zoom);
 
   const selectedEdge = selected?.type === "edge" ? edges.find(e => e.id === selected.id) : null;
   const selectedNode = selected?.type === "node" ? nodes.find(n => n.id === selected.id) : null;
@@ -360,6 +413,92 @@ export default function MindMap() {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, []);
+
+  // Keep refs in sync for touch handlers
+  useEffect(() => { toolRef.current = tool; }, [tool]);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  useEffect(() => { panRef.current = pan; }, [pan]);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+
+  // Mobile detection
+  useEffect(() => {
+    const handle = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handle);
+    return () => window.removeEventListener("resize", handle);
+  }, []);
+
+  // Touch: pan, pinch-zoom, node drag
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let drag = null;       // { nodeId, startX, startY, origX, origY }
+    let canPan = null;     // { startX, startY, startPanX, startPanY }
+    let pinch = null;      // { d0, z0, p0:{x,y}, mx, my }
+
+    function nodeIdFromEl(el) {
+      while (el && el !== canvas) {
+        if (el.dataset && el.dataset.nodeId) return el.dataset.nodeId;
+        el = el.parentElement;
+      }
+      return null;
+    }
+
+    function onStart(e) {
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        const nid = nodeIdFromEl(e.target);
+        if (nid && toolRef.current === "select") {
+          const node = nodesRef.current.find(n => n.id === nid);
+          if (node) drag = { nodeId: nid, startX: t.clientX, startY: t.clientY, origX: node.x, origY: node.y };
+        } else if (!nid && toolRef.current === "select") {
+          canPan = { startX: t.clientX, startY: t.clientY, startPanX: panRef.current.x, startPanY: panRef.current.y };
+        }
+      } else if (e.touches.length === 2) {
+        drag = null; canPan = null;
+        const t0 = e.touches[0], t1 = e.touches[1];
+        const rect = canvas.getBoundingClientRect();
+        pinch = {
+          d0: Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY),
+          z0: zoomRef.current,
+          p0: { ...panRef.current },
+          mx: (t0.clientX + t1.clientX) / 2 - rect.left,
+          my: (t0.clientY + t1.clientY) / 2 - rect.top,
+        };
+      }
+    }
+
+    function onMove(e) {
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        if (drag) {
+          const dx = (t.clientX - drag.startX) / zoomRef.current;
+          const dy = (t.clientY - drag.startY) / zoomRef.current;
+          setNodes(prev => prev.map(n => n.id === drag.nodeId ? { ...n, x: drag.origX + dx, y: drag.origY + dy } : n));
+        } else if (canPan) {
+          setPan({ x: canPan.startPanX + (t.clientX - canPan.startX), y: canPan.startPanY + (t.clientY - canPan.startY) });
+        }
+      } else if (e.touches.length === 2 && pinch) {
+        const t0 = e.touches[0], t1 = e.touches[1];
+        const d = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+        const nz = Math.min(3, Math.max(0.2, pinch.z0 * (d / pinch.d0)));
+        setZoom(nz);
+        setPan({ x: pinch.mx - (pinch.mx - pinch.p0.x) * (nz / pinch.z0), y: pinch.my - (pinch.my - pinch.p0.y) * (nz / pinch.z0) });
+      }
+    }
+
+    function onEnd() { drag = null; canPan = null; pinch = null; }
+
+    canvas.addEventListener("touchstart", onStart);
+    canvas.addEventListener("touchmove", onMove);
+    canvas.addEventListener("touchend", onEnd);
+    canvas.addEventListener("touchcancel", onEnd);
+    return () => {
+      canvas.removeEventListener("touchstart", onStart);
+      canvas.removeEventListener("touchmove", onMove);
+      canvas.removeEventListener("touchend", onEnd);
+      canvas.removeEventListener("touchcancel", onEnd);
+    };
   }, []);
 
   // Keyboard shortcuts
@@ -626,6 +765,7 @@ export default function MindMap() {
               return (
                 <div
                   key={n.id}
+                  data-node-id={n.id}
                   className={`node${selected?.id === n.id ? " selected" : ""}${dragging?.nodeId === n.id ? " dragging" : ""}${isHeader(n) ? " header-node" : ""}${connFrom?.nodeId === n.id ? " conn-source" : ""}`}
                   style={{ left: n.x, top: n.y }}
                   ref={el => { if (el) nodeRefs.current[n.id] = el; }}
@@ -654,6 +794,15 @@ export default function MindMap() {
               );
             })}
           </div>
+
+          {/* Mobile: backdrop + sidebar toggle */}
+          {isMobile && sidebarOpen && (
+            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 99, cursor: "pointer" }}
+              onClick={() => setSidebarOpen(false)}/>
+          )}
+          {isMobile && (
+            <button className="sidebar-toggle" onClick={() => setSidebarOpen(o => !o)}>☰</button>
+          )}
 
           {nodes.length === 0 && (
             <div className="empty-hint">
@@ -686,12 +835,15 @@ export default function MindMap() {
           </div>
         </div>
 
-        <div className="sidebar" style={{ width: sidebarWidth }} onWheel={e => e.stopPropagation()}>
+        <div className={`sidebar${isMobile && sidebarOpen ? " open" : ""}`} style={{ width: sidebarWidth }} onWheel={e => e.stopPropagation()}>
           <div className="sidebar-resize" onMouseDown={e => { resizing.current = { startX: e.clientX, startWidth: sidebarWidth }; e.preventDefault(); }}/>
 
           <div className="sidebar-header">
             <span className="sidebar-title">{selectedNode ? "Node" : selectedEdge ? "Edge" : "Mind Map"}</span>
-            {selected && <button className="btn danger" style={{ padding: "3px 8px", fontSize: "10px" }} onClick={deleteSelected}>delete</button>}
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              {selected && <button className="btn danger" style={{ padding: "3px 8px", fontSize: "10px" }} onClick={deleteSelected}>delete</button>}
+              {isMobile && <button style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 18, padding: "0 2px", lineHeight: 1 }} onClick={() => setSidebarOpen(false)}>×</button>}
+            </div>
           </div>
 
           <div className="sidebar-body">
