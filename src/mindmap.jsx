@@ -85,8 +85,12 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
 .sidebar { position: relative; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; min-width: 180px; max-width: 500px; }
 .sidebar-resize { position: absolute; left: 0; top: 0; bottom: 0; width: 5px; cursor: col-resize; z-index: 20; transition: background 0.15s; }
 .sidebar-resize:hover { background: rgba(122,184,200,0.3); }
-.sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.sidebar-header { padding: 12px 16px 0; display: flex; align-items: center; justify-content: space-between; }
 .sidebar-title { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.sidebar-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 8px; margin-top: 8px; gap: 2px; }
+.sidebar-tab { flex: 1; padding: 7px 4px; font-size: 11px; text-align: center; cursor: pointer; color: var(--muted); background: none; border: none; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; font-family: 'DM Sans', sans-serif; letter-spacing: 0.04em; margin-bottom: -1px; }
+.sidebar-tab:hover { color: var(--text); }
+.sidebar-tab.active { color: var(--text); border-bottom-color: var(--accent); }
 .sidebar-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .sidebar-body::-webkit-scrollbar { width: 3px; }
 .sidebar-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
@@ -148,6 +152,19 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
 .empty-hint p { font-size: 13px; color: var(--muted); }
 
 .connecting-preview { stroke: var(--accent2); stroke-dasharray: 6 4; stroke-width: 1.5; fill: none; pointer-events: none; }
+
+.help-block { display: flex; flex-direction: column; gap: 4px; }
+.shortcut-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--border); gap: 8px; }
+.shortcut-row:last-child { border-bottom: none; }
+.shortcut-key { font-family: var(--mono); font-size: 11px; color: var(--text); white-space: nowrap; flex-shrink: 0; }
+.shortcut-desc { font-size: 11px; color: var(--muted); text-align: right; }
+.prompt-card { background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 10px 12px; position: relative; }
+.prompt-card pre { font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: pre-wrap; word-break: break-word; line-height: 1.55; margin: 0; padding-right: 44px; }
+.prompt-copy { position: absolute; top: 8px; right: 8px; background: var(--surface2); border: 1px solid var(--border2); color: var(--muted); font-size: 10px; padding: 3px 7px; border-radius: 3px; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: color 0.15s, border-color 0.15s; }
+.prompt-copy:hover { color: var(--text); border-color: var(--muted); }
+.prompt-copy.copied { color: var(--accent); border-color: var(--accent); }
+.help-tip { font-size: 11px; color: var(--muted); line-height: 1.6; }
+.help-tip b { color: var(--text); font-weight: 500; }
 
 /* Mobile sidebar toggle */
 .sidebar-toggle { display: none; position: absolute; top: 12px; right: 12px; z-index: 50; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; width: 38px; height: 38px; color: var(--muted); font-size: 18px; cursor: pointer; align-items: center; justify-content: center; }
@@ -238,6 +255,8 @@ export default function MindMap() {
   const [globalShow, setGlobalShow] = useState({ body: true, neighbors: true, neighborPath: false, neighborRel: false, nodeIds: false });
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState("edit");
+  const [copiedPrompt, setCopiedPrompt] = useState(null);
 
   // History
   const hist = useRef([{ nodes: stored.current?.nodes || [DEFAULT_NODE], edges: stored.current?.edges || [] }]);
@@ -337,10 +356,17 @@ export default function MindMap() {
       try {
         const data = JSON.parse(ev.target.result);
         if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) throw new Error();
-        setNodes(data.nodes);
+        const normalized = data.nodes.map((n, i) => ({
+          showBody: true, showNeighbors: true, w: 180, h: 44,
+          ...n,
+          id: n.id || makeNodeId(),
+          x: n.x ?? (80 + (i % 4) * 230),
+          y: n.y ?? (80 + Math.floor(i / 4) * 150),
+        }));
+        setNodes(normalized);
         setEdges(data.edges);
         setSelected(null);
-        pushHistRef.current(data.nodes, data.edges);
+        pushHistRef.current(normalized, data.edges);
       } catch { alert("Invalid file — expected a mindmap JSON export."); }
     };
     reader.readAsText(file);
@@ -352,6 +378,7 @@ export default function MindMap() {
   }, [nodes, edges]);
 
   useEffect(() => { setAddConnInput(""); setShowDrop(false); }, [selected?.id]);
+  useEffect(() => { if (selected) setSidebarTab("edit"); }, [selected]);
 
   useEffect(() => {
     let changed = false;
@@ -818,17 +845,21 @@ export default function MindMap() {
           <div className="sidebar-resize" onMouseDown={e => { resizing.current = { startX: e.clientX, startWidth: sidebarWidth }; e.preventDefault(); }}/>
 
           <div className="sidebar-header">
-            <span className="sidebar-title">{selectedNode ? "Node" : selectedEdge ? "Edge" : "Mind Map"}</span>
+            <span className="sidebar-title">{sidebarTab === "help" ? "Help & Docs" : selectedNode ? "Node" : selectedEdge ? "Edge" : "Mind Map"}</span>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              {selected && <button className="btn danger" style={{ padding: "3px 8px", fontSize: "10px" }} onClick={deleteSelected}>delete</button>}
+              {selected && sidebarTab === "edit" && <button className="btn danger" style={{ padding: "3px 8px", fontSize: "10px" }} onClick={deleteSelected}>delete</button>}
               {isMobile && <button style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 18, padding: "0 2px", lineHeight: 1 }} onClick={() => setSidebarOpen(false)}>×</button>}
             </div>
+          </div>
+          <div className="sidebar-tabs">
+            <button className={`sidebar-tab${sidebarTab === "edit" ? " active" : ""}`} onClick={() => setSidebarTab("edit")}>Edit</button>
+            <button className={`sidebar-tab${sidebarTab === "help" ? " active" : ""}`} onClick={() => setSidebarTab("help")}>Help</button>
           </div>
 
           <div className="sidebar-body">
 
             {/* ── Node editor ── */}
-            {selectedNode && (
+            {sidebarTab === "edit" && selectedNode && (
               <>
                 <div className="field">
                   <label>Name</label>
@@ -905,7 +936,7 @@ export default function MindMap() {
             )}
 
             {/* ── Edge editor ── */}
-            {selectedEdge && (
+            {sidebarTab === "edit" && selectedEdge && (
               <>
                 <div className="field">
                   <label>Path name / label</label>
@@ -941,7 +972,7 @@ export default function MindMap() {
             )}
 
             {/* ── Global settings + export/import ── */}
-            {!selected && (
+            {sidebarTab === "edit" && !selected && (
               <>
                 <div className="section-label" style={{ marginTop: 0, borderTop: "none", paddingTop: 0 }}>Global display</div>
                 <div className="toggle-group">
@@ -975,17 +1006,92 @@ export default function MindMap() {
                 </label>
                 <div style={{ fontSize: 10, color: "var(--muted)", lineHeight: 1.5 }}>Replaces the current map. Export first to save a backup.</div>
 
-                <div className="section-label">Instructions</div>
-                <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.7 }}>
-                  <p><b style={{ color: "var(--text)" }}>Select</b> — click to select, drag to move, scroll to zoom, drag canvas to pan</p>
-                  <br/>
-                  <p><b style={{ color: "var(--text)" }}>Connect</b> — click source node, then click target. Click a port dot for a specific side. Esc to cancel.</p>
-                  <br/>
-                  <p><b style={{ color: "var(--text)" }}>⌘N</b> — new node at cursor (hover canvas first)</p>
-                  <p><b style={{ color: "var(--text)" }}>⌘C / ⌘V</b> — copy / paste node at cursor</p>
-                  <p><b style={{ color: "var(--text)" }}>Delete / ⌫</b> — delete selected node or connection</p>
-                  <p><b style={{ color: "var(--text)" }}>⌘Z / ⌘⇧Z</b> — undo / redo</p>
+              </>
+            )}
+
+            {/* ── Help tab ── */}
+            {sidebarTab === "help" && (
+              <>
+                <div className="section-label" style={{ marginTop: 0, borderTop: "none", paddingTop: 0 }}>Quick start</div>
+                <div className="help-block">
+                  <div className="help-tip"><b>1.</b> Click <b>+ Node</b> in the toolbar (or ⌘N over the canvas) to add nodes.</div>
+                  <div className="help-tip"><b>2.</b> Switch to <b>⌁ Connect</b> mode, then click a source node, then a target node to link them.</div>
+                  <div className="help-tip"><b>3.</b> Click any node or connection to select it and edit it in this sidebar.</div>
+                  <div className="help-tip"><b>4.</b> Export as JSON to back up or hand off to an AI. Import JSON to restore.</div>
                 </div>
+
+                <div className="section-label">Keyboard shortcuts</div>
+                <div className="help-block">
+                  {[
+                    ["⌘N", "New node at cursor"],
+                    ["⌘C / ⌘V", "Copy / paste node at cursor"],
+                    ["Delete / ⌫", "Delete selected node or edge"],
+                    ["⌘Z", "Undo"],
+                    ["⌘⇧Z / ⌘Y", "Redo"],
+                    ["Esc", "Cancel connect / deselect"],
+                    ["Scroll", "Zoom in / out"],
+                    ["Drag canvas", "Pan"],
+                  ].map(([k, d]) => (
+                    <div className="shortcut-row" key={k}>
+                      <span className="shortcut-key">{k}</span>
+                      <span className="shortcut-desc">{d}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="section-label">Use with AI</div>
+                <div className="help-tip" style={{ marginBottom: 4 }}>Copy a prompt below, paste it into any AI chat (Claude, ChatGPT, etc.), then import the result.</div>
+                {[
+                  {
+                    label: "Generate a new map",
+                    text: `Create a mind map about [YOUR TOPIC HERE]. Return ONLY valid JSON — no markdown fences, no explanation:
+
+{"nodes":[{"id":"n_1","name":"Central Idea","body":""}],"edges":[{"id":"e_1","src":"n_1","tgt":"n_2","label":""}]}
+
+Aim for 8–12 nodes. Keep names short (2–4 words). body is optional notes text.`,
+                  },
+                  {
+                    label: "Expand existing map",
+                    text: `Here is my mind map:
+
+[PASTE YOUR EXPORTED JSON HERE]
+
+Add 5–8 new nodes that deepen or broaden the existing ideas. Keep all existing nodes and edges unchanged. Return ONLY the complete updated JSON — no markdown, no explanation.`,
+                  },
+                  {
+                    label: "Suggest new connections",
+                    text: `Here is my mind map:
+
+[PASTE YOUR EXPORTED JSON HERE]
+
+Find 4–6 pairs of nodes that aren't connected yet but should be. Return ONLY a JSON object with a single edges array — no markdown, no explanation:
+
+{"edges":[{"id":"e_new1","src":"n_1","tgt":"n_3","label":"why they connect"}]}
+
+Then paste those edges into the existing JSON before importing.`,
+                  },
+                  {
+                    label: "Simplify / summarise",
+                    text: `Here is my mind map:
+
+[PASTE YOUR EXPORTED JSON HERE]
+
+Condense it: merge overlapping ideas, remove redundant nodes, and keep only the most important connections. Return ONLY the simplified JSON — no markdown, no explanation.`,
+                  },
+                ].map((p, i) => (
+                  <div className="prompt-card" key={i}>
+                    <div style={{ fontSize: 10, color: "var(--accent)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>{p.label}</div>
+                    <pre>{p.text}</pre>
+                    <button
+                      className={`prompt-copy${copiedPrompt === i ? " copied" : ""}`}
+                      onClick={() => {
+                        navigator.clipboard.writeText(p.text);
+                        setCopiedPrompt(i);
+                        setTimeout(() => setCopiedPrompt(c => c === i ? null : c), 1500);
+                      }}
+                    >{copiedPrompt === i ? "Copied!" : "Copy"}</button>
+                  </div>
+                ))}
               </>
             )}
           </div>
