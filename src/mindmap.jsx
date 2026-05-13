@@ -49,6 +49,9 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
 .node.header-node { border-color: var(--accent2); }
 .node.dragging { cursor: grabbing; box-shadow: 0 8px 32px rgba(0,0,0,0.6); z-index: 100; }
 .node.conn-source { border-color: var(--accent2); box-shadow: 0 0 0 2px var(--accent2), 0 2px 20px rgba(122,184,200,0.3); }
+.node.multi-selected { border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2), 0 2px 16px rgba(122,184,200,0.12); }
+
+.sel-box { position: absolute; border: 1.5px dashed var(--accent2); background: rgba(122,184,200,0.06); border-radius: 3px; pointer-events: none; z-index: 50; }
 
 .node-name { padding: 8px 12px 7px; font-size: 12px; font-weight: 500; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 6px; }
 .node.header-node .node-name { color: var(--accent2); }
@@ -257,6 +260,8 @@ export default function MindMap() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarTab, setSidebarTab] = useState("edit");
   const [copiedPrompt, setCopiedPrompt] = useState(null);
+  const [multiSelected, setMultiSelected] = useState([]);
+  const [selBox, setSelBox] = useState(null);
 
   // History
   const hist = useRef([{ nodes: stored.current?.nodes || [DEFAULT_NODE], edges: stored.current?.edges || [] }]);
@@ -269,6 +274,7 @@ export default function MindMap() {
   const clipboardRef = useRef(null);
   const mouseCanvasRef = useRef({ x: 0, y: 0 });
   const canvasHoveredRef = useRef(false);
+  const selBoxStartRef = useRef(null);
 
   // Stable refs for touch handlers and deferred callbacks
   const toolRef = useRef(tool);
@@ -514,23 +520,35 @@ export default function MindMap() {
         pushHistRef.current(newNodes, edgesRef.current);
         return;
       }
-      if (e.key === "Escape") { setConnFrom(null); setSelected(null); return; }
-      if ((e.key === "Delete" || e.key === "Backspace") && selected && !e.target.matches("input,textarea")) {
-        const cur = nodesRef.current, curE = edgesRef.current;
-        let nn = cur, ne = curE;
-        if (selected.type === "node") {
-          nn = cur.filter(n => n.id !== selected.id);
-          ne = curE.filter(e => e.src !== selected.id && e.tgt !== selected.id);
-        } else {
-          ne = curE.filter(e => e.id !== selected.id);
+      if (e.key === "Escape") {
+        setConnFrom(null); setSelected(null); setMultiSelected([]); setSelBox(null);
+        selBoxStartRef.current = null;
+        return;
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && !e.target.matches("input,textarea")) {
+        if (multiSelected.length > 0) {
+          const ids = new Set(multiSelected);
+          const nn = nodesRef.current.filter(n => !ids.has(n.id));
+          const ne = edgesRef.current.filter(ed => !ids.has(ed.src) && !ids.has(ed.tgt));
+          setNodes(nn); setEdges(ne); setMultiSelected([]);
+          pushHistRef.current(nn, ne);
+        } else if (selected) {
+          const cur = nodesRef.current, curE = edgesRef.current;
+          let nn = cur, ne = curE;
+          if (selected.type === "node") {
+            nn = cur.filter(n => n.id !== selected.id);
+            ne = curE.filter(e => e.src !== selected.id && e.tgt !== selected.id);
+          } else {
+            ne = curE.filter(e => e.id !== selected.id);
+          }
+          setNodes(nn); setEdges(ne); setSelected(null);
+          pushHistRef.current(nn, ne);
         }
-        setNodes(nn); setEdges(ne); setSelected(null);
-        pushHistRef.current(nn, ne);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, undo, redo]);
+  }, [selected, multiSelected, undo, redo]);
 
   // ── Canvas / node handlers ────────────────────────────────────────────────────
   function getAbsPortPos(node, port) {
@@ -546,23 +564,61 @@ export default function MindMap() {
   const onCanvasMouseDown = useCallback((e) => {
     const onCanvas = e.target === canvasRef.current || e.target.classList.contains("canvas-inner") || e.target.classList.contains("grid-bg");
     if (!onCanvas) return;
-    if (tool === "select") { setIsPanning(true); setPanStart({ x: e.clientX-pan.x, y: e.clientY-pan.y }); setSelected(null); }
+    if (tool === "select") {
+      if (e.shiftKey) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const cx = (e.clientX - rect.left - pan.x) / zoom;
+        const cy = (e.clientY - rect.top - pan.y) / zoom;
+        selBoxStartRef.current = { x: cx, y: cy };
+        setSelBox({ x0: cx, y0: cy, x1: cx, y1: cy });
+        setSelected(null);
+      } else {
+        setIsPanning(true); setPanStart({ x: e.clientX-pan.x, y: e.clientY-pan.y }); setSelected(null);
+        setMultiSelected([]);
+      }
+    }
     else if (tool === "connect") { setConnFrom(null); }
-  }, [tool, pan]);
+  }, [tool, pan, zoom]);
 
   const onCanvasMouseMove = useCallback((e) => {
     const rect = canvasRef.current.getBoundingClientRect();
     const pos = { x: (e.clientX-rect.left-pan.x)/zoom, y: (e.clientY-rect.top-pan.y)/zoom };
     setMouseCanvas(pos);
     mouseCanvasRef.current = pos;
+    if (selBoxStartRef.current) {
+      setSelBox({ x0: selBoxStartRef.current.x, y0: selBoxStartRef.current.y, x1: pos.x, y1: pos.y });
+      return;
+    }
     if (isPanning && panStart) setPan({ x: e.clientX-panStart.x, y: e.clientY-panStart.y });
     if (dragging) {
       const dx = (e.clientX-dragging.startX)/zoom, dy = (e.clientY-dragging.startY)/zoom;
-      setNodes(p => p.map(n => n.id === dragging.nodeId ? { ...n, x: dragging.origX+dx, y: dragging.origY+dy } : n));
+      if (dragging.origPositions) {
+        setNodes(p => p.map(n => {
+          const orig = dragging.origPositions[n.id];
+          return orig ? { ...n, x: orig.x+dx, y: orig.y+dy } : n;
+        }));
+      } else {
+        setNodes(p => p.map(n => n.id === dragging.nodeId ? { ...n, x: dragging.origX+dx, y: dragging.origY+dy } : n));
+      }
     }
   }, [isPanning, panStart, dragging, pan, zoom]);
 
   const onCanvasMouseUp = useCallback(() => {
+    if (selBoxStartRef.current) {
+      setSelBox(prev => {
+        if (prev) {
+          const x0 = Math.min(prev.x0, prev.x1), x1 = Math.max(prev.x0, prev.x1);
+          const y0 = Math.min(prev.y0, prev.y1), y1 = Math.max(prev.y0, prev.y1);
+          const inside = nodesRef.current.filter(n =>
+            n.x < x1 && n.x + (n.w || 180) > x0 && n.y < y1 && n.y + (n.h || 44) > y0
+          ).map(n => n.id);
+          setMultiSelected(inside);
+        }
+        return null;
+      });
+      selBoxStartRef.current = null;
+      return;
+    }
     if (dragging) setTimeout(() => pushHistRef.current(nodesRef.current, edgesRef.current), 0);
     setIsPanning(false); setPanStart(null); setDragging(null);
   }, [dragging]);
@@ -582,10 +638,18 @@ export default function MindMap() {
   const onNodeMouseDown = useCallback((e, nodeId) => {
     if (tool !== "select") return;
     e.stopPropagation();
-    const node = nodes.find(n => n.id === nodeId);
-    setDragging({ nodeId, startX: e.clientX, startY: e.clientY, origX: node.x, origY: node.y });
-    setSelected({ type: "node", id: nodeId });
-  }, [tool, nodes]);
+    const curMulti = multiSelected;
+    if (curMulti.length > 1 && curMulti.includes(nodeId)) {
+      const origPositions = {};
+      nodes.forEach(n => { if (curMulti.includes(n.id)) origPositions[n.id] = { x: n.x, y: n.y }; });
+      setDragging({ nodeId, startX: e.clientX, startY: e.clientY, origPositions });
+    } else {
+      const node = nodes.find(n => n.id === nodeId);
+      setDragging({ nodeId, startX: e.clientX, startY: e.clientY, origX: node.x, origY: node.y });
+      setSelected({ type: "node", id: nodeId });
+      setMultiSelected([]);
+    }
+  }, [tool, nodes, multiSelected]);
 
   const onNodeClick = useCallback((e, nodeId) => {
     if (tool !== "connect") return;
@@ -775,7 +839,7 @@ export default function MindMap() {
                 <div
                   key={n.id}
                   data-node-id={n.id}
-                  className={`node${selected?.id === n.id ? " selected" : ""}${dragging?.nodeId === n.id ? " dragging" : ""}${isHeader(n) ? " header-node" : ""}${connFrom?.nodeId === n.id ? " conn-source" : ""}`}
+                  className={`node${selected?.id === n.id ? " selected" : ""}${multiSelected.includes(n.id) ? " multi-selected" : ""}${dragging?.nodeId === n.id ? " dragging" : ""}${isHeader(n) ? " header-node" : ""}${connFrom?.nodeId === n.id ? " conn-source" : ""}`}
                   style={{ left: n.x, top: n.y }}
                   ref={el => { if (el) nodeRefs.current[n.id] = el; }}
                   onMouseDown={e => onNodeMouseDown(e, n.id)}
@@ -802,6 +866,14 @@ export default function MindMap() {
                 </div>
               );
             })}
+            {selBox && (
+              <div className="sel-box" style={{
+                left: Math.min(selBox.x0, selBox.x1),
+                top: Math.min(selBox.y0, selBox.y1),
+                width: Math.abs(selBox.x1 - selBox.x0),
+                height: Math.abs(selBox.y1 - selBox.y0),
+              }}/>
+            )}
           </div>
 
           {nodes.length === 0 && (
@@ -824,7 +896,20 @@ export default function MindMap() {
             <button className="tool-btn" onClick={() => zoomBy(1.25)} title="Zoom in">＋</button>
             <button className="tool-btn" onClick={() => zoomBy(1/1.25)} title="Zoom out">－</button>
             <button className="tool-btn" onClick={centerView} title="Fit to view">⊙</button>
-            {selected && (
+            {multiSelected.length > 1 && (
+              <>
+                <div className="tool-sep"/>
+                <span style={{ fontSize: 10, color: "var(--accent2)", padding: "0 4px", alignSelf: "center" }}>{multiSelected.length} selected</span>
+                <button className="tool-btn" style={{ color: "var(--danger)" }} onClick={() => {
+                  const ids = new Set(multiSelected);
+                  const nn = nodes.filter(n => !ids.has(n.id));
+                  const ne = edges.filter(e => !ids.has(e.src) && !ids.has(e.tgt));
+                  setNodes(nn); setEdges(ne); setMultiSelected([]);
+                  pushHistory(nn, ne);
+                }}>✕ Delete all</button>
+              </>
+            )}
+            {selected && multiSelected.length === 0 && (
               <>
                 <div className="tool-sep"/>
                 <button className="tool-btn" onClick={deleteSelected} style={{ color: "var(--danger)" }}>✕ Delete</button>
@@ -837,6 +922,7 @@ export default function MindMap() {
             <span>{edges.length} edges</span>
             <span>{Math.round(zoom * 100)}%</span>
             {connFrom && <span className="infobar-hint">click target — esc to cancel</span>}
+            {multiSelected.length > 1 && <span className="infobar-hint">shift+drag to re-select · drag any node to move group</span>}
           </div>
         </div>
 
@@ -1025,7 +1111,8 @@ export default function MindMap() {
                   {[
                     ["N", "New node at cursor (hover canvas)"],
                     ["⌘C / ⌘V", "Copy / paste node at cursor"],
-                    ["Delete / ⌫", "Delete selected node or edge"],
+                    ["Shift + drag", "Draw selection box (multi-select)"],
+                    ["Delete / ⌫", "Delete selected node, edge, or group"],
                     ["⌘Z", "Undo"],
                     ["⌘⇧Z / ⌘Y", "Redo"],
                     ["Esc", "Cancel connect / deselect"],
