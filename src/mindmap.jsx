@@ -28,7 +28,7 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
 .canvas-wrap.connecting { cursor: crosshair; }
 .canvas-wrap.connecting .node { cursor: pointer; }
 .canvas-wrap.connecting .node.conn-source { cursor: not-allowed; }
-.canvas-inner { position: absolute; transform-origin: 0 0; }
+.canvas-inner { position: absolute; transform-origin: 0 0; will-change: transform; }
 
 .grid-bg { position: absolute; inset: 0; pointer-events: none; }
 
@@ -424,6 +424,7 @@ export default function MindMap() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     let drag = null, canPan = null, pinch = null;
+    let rafId = null, pending = null;
 
     function nodeIdFromEl(el) {
       while (el && el !== canvas) {
@@ -452,21 +453,33 @@ export default function MindMap() {
     function onMove(e) {
       if (e.touches.length === 1) {
         const t = e.touches[0];
-        if (drag) {
-          const dx = (t.clientX-drag.startX)/zoomRef.current, dy = (t.clientY-drag.startY)/zoomRef.current;
-          setNodes(prev => prev.map(n => n.id === drag.nodeId ? { ...n, x: drag.origX+dx, y: drag.origY+dy } : n));
-        } else if (canPan) {
-          setPan({ x: canPan.startPanX+(t.clientX-canPan.startX), y: canPan.startPanY+(t.clientY-canPan.startY) });
-        }
-      } else if (e.touches.length === 2 && pinch) {
-        const t0 = e.touches[0], t1 = e.touches[1];
-        const d = Math.hypot(t0.clientX-t1.clientX, t0.clientY-t1.clientY);
-        const nz = Math.min(3, Math.max(0.2, pinch.z0*(d/pinch.d0)));
-        setZoom(nz);
-        setPan({ x: pinch.mx-(pinch.mx-pinch.p0.x)*(nz/pinch.z0), y: pinch.my-(pinch.my-pinch.p0.y)*(nz/pinch.z0) });
+        pending = { n: 1, x: t.clientX, y: t.clientY };
+      } else if (e.touches.length === 2) {
+        pending = { n: 2, x0: e.touches[0].clientX, y0: e.touches[0].clientY, x1: e.touches[1].clientX, y1: e.touches[1].clientY };
       }
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const m = pending; pending = null;
+        if (!m) return;
+        if (m.n === 1) {
+          if (drag) {
+            const dx = (m.x-drag.startX)/zoomRef.current, dy = (m.y-drag.startY)/zoomRef.current;
+            setNodes(prev => prev.map(n => n.id === drag.nodeId ? { ...n, x: drag.origX+dx, y: drag.origY+dy } : n));
+          } else if (canPan) {
+            setPan({ x: canPan.startPanX+(m.x-canPan.startX), y: canPan.startPanY+(m.y-canPan.startY) });
+          }
+        } else if (m.n === 2 && pinch) {
+          const d = Math.hypot(m.x0-m.x1, m.y0-m.y1);
+          const nz = Math.min(3, Math.max(0.2, pinch.z0*(d/pinch.d0)));
+          setZoom(nz);
+          setPan({ x: pinch.mx-(pinch.mx-pinch.p0.x)*(nz/pinch.z0), y: pinch.my-(pinch.my-pinch.p0.y)*(nz/pinch.z0) });
+        }
+      });
     }
     function onEnd() {
+      if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+      pending = null;
       if (drag) setTimeout(() => pushHistRef.current(nodesRef.current, edgesRef.current), 0);
       drag = null; canPan = null; pinch = null;
     }
@@ -792,7 +805,7 @@ export default function MindMap() {
             <rect width="100%" height="100%" fill="url(#grid)"/>
           </svg>
 
-          <div className="canvas-inner" style={{ transform: `translate(${pan.x}px,${pan.y}px) scale(${zoom})` }}>
+          <div className="canvas-inner" style={{ transform: `translate3d(${pan.x}px,${pan.y}px,0) scale(${zoom})` }}>
             <svg className="edges-svg">
               <defs>
                 <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6 Z" fill="var(--border2)"/></marker>
