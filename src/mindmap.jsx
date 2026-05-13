@@ -247,6 +247,9 @@ export default function MindMap() {
   const canvasRef = useRef(null);
   const nodeRefs = useRef({});
   const resizing = useRef(null);
+  const clipboardRef = useRef(null);
+  const mouseCanvasRef = useRef({ x: 0, y: 0 });
+  const canvasHoveredRef = useRef(false);
 
   // Stable refs for touch handlers and deferred callbacks
   const toolRef = useRef(tool);
@@ -455,6 +458,35 @@ export default function MindMap() {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); return; }
+      if (mod && e.key === "n" && canvasHoveredRef.current && !e.target.matches("input,textarea")) {
+        e.preventDefault();
+        const pos = mouseCanvasRef.current;
+        const id = makeNodeId();
+        const newNode = { id, name: "New Node", body: "", x: pos.x-90, y: pos.y-22, w: 180, h: 44, showBody: true, showNeighbors: true };
+        const newNodes = [...nodesRef.current, newNode];
+        setNodes(newNodes); setSelected({ type: "node", id });
+        pushHistRef.current(newNodes, edgesRef.current);
+        return;
+      }
+      if (mod && e.key === "c" && !e.target.matches("input,textarea")) {
+        const sel = selected;
+        if (sel?.type === "node") {
+          clipboardRef.current = nodesRef.current.find(n => n.id === sel.id) || null;
+        }
+        return;
+      }
+      if (mod && e.key === "v" && !e.target.matches("input,textarea") && clipboardRef.current) {
+        e.preventDefault();
+        const src = clipboardRef.current;
+        const pos = mouseCanvasRef.current;
+        const id = makeNodeId();
+        const w = src.w || 180, h = src.h || 44;
+        const newNode = { ...src, id, x: pos.x - w/2, y: pos.y - h/2 };
+        const newNodes = [...nodesRef.current, newNode];
+        setNodes(newNodes); setSelected({ type: "node", id });
+        pushHistRef.current(newNodes, edgesRef.current);
+        return;
+      }
       if (e.key === "Escape") { setConnFrom(null); setSelected(null); return; }
       if ((e.key === "Delete" || e.key === "Backspace") && selected && !e.target.matches("input,textarea")) {
         const cur = nodesRef.current, curE = edgesRef.current;
@@ -493,7 +525,9 @@ export default function MindMap() {
 
   const onCanvasMouseMove = useCallback((e) => {
     const rect = canvasRef.current.getBoundingClientRect();
-    setMouseCanvas({ x: (e.clientX-rect.left-pan.x)/zoom, y: (e.clientY-rect.top-pan.y)/zoom });
+    const pos = { x: (e.clientX-rect.left-pan.x)/zoom, y: (e.clientY-rect.top-pan.y)/zoom };
+    setMouseCanvas(pos);
+    mouseCanvasRef.current = pos;
     if (isPanning && panStart) setPan({ x: e.clientX-panStart.x, y: e.clientY-panStart.y });
     if (dragging) {
       const dx = (e.clientX-dragging.startX)/zoom, dy = (e.clientY-dragging.startY)/zoom;
@@ -661,7 +695,8 @@ export default function MindMap() {
           onMouseDown={onCanvasMouseDown}
           onMouseMove={onCanvasMouseMove}
           onMouseUp={onCanvasMouseUp}
-          onMouseLeave={onCanvasMouseUp}
+          onMouseEnter={() => { canvasHoveredRef.current = true; }}
+          onMouseLeave={() => { canvasHoveredRef.current = false; onCanvasMouseUp(); }}
           onWheel={onWheel}
         >
           <svg className="grid-bg" width="100%" height="100%">
@@ -946,6 +981,9 @@ export default function MindMap() {
                   <br/>
                   <p><b style={{ color: "var(--text)" }}>Connect</b> — click source node, then click target. Click a port dot for a specific side. Esc to cancel.</p>
                   <br/>
+                  <p><b style={{ color: "var(--text)" }}>⌘N</b> — new node at cursor (hover canvas first)</p>
+                  <p><b style={{ color: "var(--text)" }}>⌘C / ⌘V</b> — copy / paste node at cursor</p>
+                  <p><b style={{ color: "var(--text)" }}>Delete / ⌫</b> — delete selected node or connection</p>
                   <p><b style={{ color: "var(--text)" }}>⌘Z / ⌘⇧Z</b> — undo / redo</p>
                 </div>
               </>
