@@ -485,7 +485,7 @@ export default function MindMap() {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); return; }
-      if (mod && e.key === "n" && canvasHoveredRef.current && !e.target.matches("input,textarea")) {
+      if (e.key === "n" && !mod && canvasHoveredRef.current && !e.target.matches("input,textarea")) {
         e.preventDefault();
         const pos = mouseCanvasRef.current;
         const id = makeNodeId();
@@ -1014,7 +1014,7 @@ export default function MindMap() {
               <>
                 <div className="section-label" style={{ marginTop: 0, borderTop: "none", paddingTop: 0 }}>Quick start</div>
                 <div className="help-block">
-                  <div className="help-tip"><b>1.</b> Click <b>+ Node</b> in the toolbar (or ⌘N over the canvas) to add nodes.</div>
+                  <div className="help-tip"><b>1.</b> Click <b>+ Node</b> in the toolbar (or press <b>N</b> while hovering the canvas) to add nodes.</div>
                   <div className="help-tip"><b>2.</b> Switch to <b>⌁ Connect</b> mode, then click a source node, then a target node to link them.</div>
                   <div className="help-tip"><b>3.</b> Click any node or connection to select it and edit it in this sidebar.</div>
                   <div className="help-tip"><b>4.</b> Export as JSON to back up or hand off to an AI. Import JSON to restore.</div>
@@ -1023,7 +1023,7 @@ export default function MindMap() {
                 <div className="section-label">Keyboard shortcuts</div>
                 <div className="help-block">
                   {[
-                    ["⌘N", "New node at cursor"],
+                    ["N", "New node at cursor (hover canvas)"],
                     ["⌘C / ⌘V", "Copy / paste node at cursor"],
                     ["Delete / ⌫", "Delete selected node or edge"],
                     ["⌘Z", "Undo"],
