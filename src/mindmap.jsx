@@ -25,9 +25,9 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
 
 .canvas-wrap { flex: 1; position: relative; overflow: hidden; cursor: default; background: var(--bg); touch-action: none; -webkit-tap-highlight-color: transparent; }
 .canvas-wrap.panning { cursor: grabbing; }
-.canvas-wrap.connect-mode { cursor: crosshair; }
-.canvas-wrap.connect-mode .node { cursor: pointer; }
-.canvas-wrap.connect-mode .node.conn-source { cursor: not-allowed; }
+.canvas-wrap.connecting { cursor: crosshair; }
+.canvas-wrap.connecting .node { cursor: pointer; }
+.canvas-wrap.connecting .node.conn-source { cursor: not-allowed; }
 .canvas-inner { position: absolute; transform-origin: 0 0; }
 
 .grid-bg { position: absolute; inset: 0; pointer-events: none; }
@@ -246,7 +246,6 @@ export default function MindMap() {
   const [selected, setSelected] = useState(null);
   const [pan, setPan] = useState({ x: 80, y: 60 });
   const [zoom, setZoom] = useState(1);
-  const [tool, setTool] = useState("select");
   const [connFrom, setConnFrom] = useState(null);
   const [mouseCanvas, setMouseCanvas] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(null);
@@ -277,7 +276,6 @@ export default function MindMap() {
   const selBoxStartRef = useRef(null);
 
   // Stable refs for touch handlers and deferred callbacks
-  const toolRef = useRef(tool);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const panRef = useRef(pan);
@@ -410,7 +408,6 @@ export default function MindMap() {
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
   }, []);
 
-  useEffect(() => { toolRef.current = tool; }, [tool]);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
   useEffect(() => { panRef.current = pan; }, [pan]);
@@ -439,10 +436,10 @@ export default function MindMap() {
       if (e.touches.length === 1) {
         const t = e.touches[0];
         const nid = nodeIdFromEl(e.target);
-        if (nid && toolRef.current === "select") {
+        if (nid) {
           const node = nodesRef.current.find(n => n.id === nid);
           if (node) drag = { nodeId: nid, startX: t.clientX, startY: t.clientY, origX: node.x, origY: node.y };
-        } else if (!nid && toolRef.current === "select") {
+        } else {
           canPan = { startX: t.clientX, startY: t.clientY, startPanX: panRef.current.x, startPanY: panRef.current.y };
         }
       } else if (e.touches.length === 2) {
@@ -521,8 +518,8 @@ export default function MindMap() {
         return;
       }
       if (e.key === "Escape") {
-        setConnFrom(null); setSelected(null); setMultiSelected([]); setSelBox(null);
-        selBoxStartRef.current = null;
+        setConnFrom(null); setSelected(null); setMultiSelected([]);
+        setSelBox(null); selBoxStartRef.current = null;
         return;
       }
       if ((e.key === "Delete" || e.key === "Backspace") && !e.target.matches("input,textarea")) {
@@ -564,21 +561,19 @@ export default function MindMap() {
   const onCanvasMouseDown = useCallback((e) => {
     const onCanvas = e.target === canvasRef.current || e.target.classList.contains("canvas-inner") || e.target.classList.contains("grid-bg");
     if (!onCanvas) return;
-    if (tool === "select") {
-      if (e.shiftKey) {
-        const rect = canvasRef.current.getBoundingClientRect();
-        const cx = (e.clientX - rect.left - pan.x) / zoom;
-        const cy = (e.clientY - rect.top - pan.y) / zoom;
-        selBoxStartRef.current = { x: cx, y: cy };
-        setSelBox({ x0: cx, y0: cy, x1: cx, y1: cy });
-        setSelected(null);
-      } else {
-        setIsPanning(true); setPanStart({ x: e.clientX-pan.x, y: e.clientY-pan.y }); setSelected(null);
-        setMultiSelected([]);
-      }
+    if (connFrom) { setConnFrom(null); return; }
+    if (e.shiftKey) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const cx = (e.clientX - rect.left - pan.x) / zoom;
+      const cy = (e.clientY - rect.top - pan.y) / zoom;
+      selBoxStartRef.current = { x: cx, y: cy };
+      setSelBox({ x0: cx, y0: cy, x1: cx, y1: cy });
+      setSelected(null);
+    } else {
+      setIsPanning(true); setPanStart({ x: e.clientX-pan.x, y: e.clientY-pan.y }); setSelected(null);
+      setMultiSelected([]);
     }
-    else if (tool === "connect") { setConnFrom(null); }
-  }, [tool, pan, zoom]);
+  }, [pan, zoom, connFrom]);
 
   const onCanvasMouseMove = useCallback((e) => {
     const rect = canvasRef.current.getBoundingClientRect();
@@ -636,7 +631,7 @@ export default function MindMap() {
   }, []);
 
   const onNodeMouseDown = useCallback((e, nodeId) => {
-    if (tool !== "select") return;
+    if (connFrom) return;
     e.stopPropagation();
     const curMulti = multiSelected;
     if (curMulti.length > 1 && curMulti.includes(nodeId)) {
@@ -649,33 +644,31 @@ export default function MindMap() {
       setSelected({ type: "node", id: nodeId });
       setMultiSelected([]);
     }
-  }, [tool, nodes, multiSelected]);
+  }, [connFrom, nodes, multiSelected]);
 
   const onNodeClick = useCallback((e, nodeId) => {
-    if (tool !== "connect") return;
+    if (!connFrom) return;
     e.stopPropagation();
-    if (!connFrom) { setConnFrom({ nodeId, port: null }); return; }
-    if (connFrom.nodeId === nodeId) return;
+    if (connFrom.nodeId === nodeId) { setConnFrom(null); return; }
     const src = nodes.find(n => n.id === connFrom.nodeId), tgt = nodes.find(n => n.id === nodeId);
     const auto = bestPorts(src, tgt);
     const eid = makeEdgeId();
     const newEdge = { id: eid, src: connFrom.nodeId, srcPort: connFrom.port||auto.srcPort, tgt: nodeId, tgtPort: auto.tgtPort, label: "", relSrc: "", relTgt: "" };
     const newEdges = [...edgesRef.current, newEdge];
     setEdges(newEdges); setConnFrom(null); setSelected({ type: "edge", id: eid });
-    pushHistRef.current(nodes, newEdges);
-  }, [tool, connFrom, nodes]);
+    pushHistRef.current(nodesRef.current, newEdges);
+  }, [connFrom, nodes]);
 
   const onPortClick = useCallback((e, nodeId, port) => {
     e.stopPropagation();
-    if (tool !== "connect") return;
     if (!connFrom) { setConnFrom({ nodeId, port }); return; }
-    if (connFrom.nodeId === nodeId) return;
+    if (connFrom.nodeId === nodeId) { setConnFrom(null); return; }
     const eid = makeEdgeId();
     const newEdge = { id: eid, src: connFrom.nodeId, srcPort: connFrom.port||"right", tgt: nodeId, tgtPort: port, label: "", relSrc: "", relTgt: "" };
     const newEdges = [...edgesRef.current, newEdge];
     setEdges(newEdges); setConnFrom(null); setSelected({ type: "edge", id: eid });
     pushHistRef.current(nodesRef.current, newEdges);
-  }, [tool, connFrom]);
+  }, [connFrom]);
 
   const addNode = () => {
     const id = makeNodeId();
@@ -781,7 +774,7 @@ export default function MindMap() {
       <style>{FONTS}{STYLES}</style>
       <div className="app">
         <div
-          className={`canvas-wrap${isPanning ? " panning" : ""}${tool === "connect" ? " connect-mode" : ""}`}
+          className={`canvas-wrap${isPanning ? " panning" : ""}${connFrom ? " connecting" : ""}`}
           ref={canvasRef}
           onMouseDown={onCanvasMouseDown}
           onMouseMove={onCanvasMouseMove}
@@ -889,8 +882,6 @@ export default function MindMap() {
             <button className="tool-btn" onClick={undo} disabled={!canUndo} title="Undo (⌘Z)">⟲</button>
             <button className="tool-btn" onClick={redo} disabled={!canRedo} title="Redo (⌘⇧Z)">⟳</button>
             <div className="tool-sep"/>
-            <button className={`tool-btn${tool === "select" ? " active" : ""}`} onClick={() => setTool("select")}>↖ Select</button>
-            <button className={`tool-btn${tool === "connect" ? " active" : ""}`} onClick={() => { setTool("connect"); setConnFrom(null); }}>⌁ Connect</button>
             <button className="tool-btn" onClick={addNode}>+ Node</button>
             <div className="tool-sep"/>
             <button className="tool-btn" onClick={() => zoomBy(1.25)} title="Zoom in">＋</button>
@@ -1101,7 +1092,7 @@ export default function MindMap() {
                 <div className="section-label" style={{ marginTop: 0, borderTop: "none", paddingTop: 0 }}>Quick start</div>
                 <div className="help-block">
                   <div className="help-tip"><b>1.</b> Click <b>+ Node</b> in the toolbar (or press <b>N</b> while hovering the canvas) to add nodes.</div>
-                  <div className="help-tip"><b>2.</b> Switch to <b>⌁ Connect</b> mode, then click a source node, then a target node to link them.</div>
+                  <div className="help-tip"><b>2.</b> Hover a node to reveal its port dots. Click a port to start a connection, then click any other node or port to complete it. Esc cancels.</div>
                   <div className="help-tip"><b>3.</b> Click any node or connection to select it and edit it in this sidebar.</div>
                   <div className="help-tip"><b>4.</b> Export as JSON to back up or hand off to an AI. Import JSON to restore.</div>
                 </div>
@@ -1115,7 +1106,7 @@ export default function MindMap() {
                     ["Delete / ⌫", "Delete selected node, edge, or group"],
                     ["⌘Z", "Undo"],
                     ["⌘⇧Z / ⌘Y", "Redo"],
-                    ["Esc", "Cancel connect / deselect"],
+                    ["Esc", "Cancel connection / deselect"],
                     ["Scroll", "Zoom in / out"],
                     ["Drag canvas", "Pan"],
                   ].map(([k, d]) => (
