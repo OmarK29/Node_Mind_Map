@@ -286,6 +286,9 @@ export default function MindMap() {
   const selectedNode = selected?.type === "node" ? nodes.find(n => n.id === selected.id) : null;
   const canUndo = histIdx.current > 0;
   const canRedo = histIdx.current < hist.current.length - 1;
+  const selectionEdgeCount = multiSelected.length > 0
+    ? edges.filter(e => multiSelected.includes(e.src) && multiSelected.includes(e.tgt)).length
+    : 0;
 
   // ── History ──────────────────────────────────────────────────────────────────
   const pushHistory = useCallback((newNodes, newEdges) => {
@@ -321,21 +324,33 @@ export default function MindMap() {
   // ── Export / Import ───────────────────────────────────────────────────────────
   const exportJSON = useCallback((selOnly = false) => {
     let expNodes = nodes, expEdges = edges;
-    if (selOnly && selectedNode) {
-      expEdges = edges.filter(e => e.src === selectedNode.id || e.tgt === selectedNode.id);
-      const ids = new Set([selectedNode.id, ...expEdges.map(e => e.src), ...expEdges.map(e => e.tgt)]);
-      expNodes = nodes.filter(n => ids.has(n.id));
+    if (selOnly) {
+      if (multiSelected.length > 0) {
+        const ids = new Set(multiSelected);
+        expNodes = nodes.filter(n => ids.has(n.id));
+        expEdges = edges.filter(e => ids.has(e.src) && ids.has(e.tgt));
+      } else if (selectedNode) {
+        expEdges = edges.filter(e => e.src === selectedNode.id || e.tgt === selectedNode.id);
+        const ids = new Set([selectedNode.id, ...expEdges.map(e => e.src), ...expEdges.map(e => e.tgt)]);
+        expNodes = nodes.filter(n => ids.has(n.id));
+      }
     }
     const ts = new Date().toISOString().slice(0,10);
     dlBlob(JSON.stringify({ nodes: expNodes, edges: expEdges }, null, 2), `mindmap_${ts}.json`, "application/json");
-  }, [nodes, edges, selectedNode]);
+  }, [nodes, edges, selectedNode, multiSelected]);
 
   const exportCSV = useCallback((selOnly = false) => {
     let expNodes = nodes, expEdges = edges;
-    if (selOnly && selectedNode) {
-      expEdges = edges.filter(e => e.src === selectedNode.id || e.tgt === selectedNode.id);
-      const ids = new Set([selectedNode.id, ...expEdges.map(e => e.src), ...expEdges.map(e => e.tgt)]);
-      expNodes = nodes.filter(n => ids.has(n.id));
+    if (selOnly) {
+      if (multiSelected.length > 0) {
+        const ids = new Set(multiSelected);
+        expNodes = nodes.filter(n => ids.has(n.id));
+        expEdges = edges.filter(e => ids.has(e.src) && ids.has(e.tgt));
+      } else if (selectedNode) {
+        expEdges = edges.filter(e => e.src === selectedNode.id || e.tgt === selectedNode.id);
+        const ids = new Set([selectedNode.id, ...expEdges.map(e => e.src), ...expEdges.map(e => e.tgt)]);
+        expNodes = nodes.filter(n => ids.has(n.id));
+      }
     }
     const esc = s => `"${(s||"").replace(/"/g,'""')}"`;
     const lines = [
@@ -352,7 +367,7 @@ export default function MindMap() {
     ];
     const ts = new Date().toISOString().slice(0,10);
     dlBlob(lines.join("\n"), `mindmap_${ts}.csv`, "text/csv");
-  }, [nodes, edges, selectedNode]);
+  }, [nodes, edges, selectedNode, multiSelected]);
 
   const importJSON = useCallback((file) => {
     const reader = new FileReader();
@@ -558,22 +573,42 @@ export default function MindMap() {
         return;
       }
       if (mod && e.key === "c" && !e.target.matches("input,textarea")) {
-        const sel = selected;
-        if (sel?.type === "node") {
-          clipboardRef.current = nodesRef.current.find(n => n.id === sel.id) || null;
+        if (multiSelected.length > 0) {
+          const ids = new Set(multiSelected);
+          clipboardRef.current = {
+            nodes: nodesRef.current.filter(n => ids.has(n.id)),
+            edges: edgesRef.current.filter(ed => ids.has(ed.src) && ids.has(ed.tgt)),
+          };
+        } else if (selected?.type === "node") {
+          const n = nodesRef.current.find(n => n.id === selected.id);
+          if (n) clipboardRef.current = { nodes: [n], edges: [] };
         }
         return;
       }
       if (mod && e.key === "v" && !e.target.matches("input,textarea") && clipboardRef.current) {
         e.preventDefault();
-        const src = clipboardRef.current;
+        const clip = clipboardRef.current;
+        const clipNodes = clip.nodes || [clip];
+        const clipEdges = clip.edges || [];
+        if (clipNodes.length === 0) return;
         const pos = mouseCanvasRef.current;
-        const id = makeNodeId();
-        const w = src.w || 180, h = src.h || 44;
-        const newNode = { ...src, id, x: pos.x - w/2, y: pos.y - h/2 };
-        const newNodes = [...nodesRef.current, newNode];
-        setNodes(newNodes); setSelected({ type: "node", id });
-        pushHistRef.current(newNodes, edgesRef.current);
+        const cx = clipNodes.reduce((s, n) => s + n.x + (n.w||180)/2, 0) / clipNodes.length;
+        const cy = clipNodes.reduce((s, n) => s + n.y + (n.h||44)/2, 0) / clipNodes.length;
+        const idMap = {};
+        const newNodes = clipNodes.map(n => {
+          const newId = makeNodeId();
+          idMap[n.id] = newId;
+          return { ...n, id: newId, x: n.x + (pos.x - cx), y: n.y + (pos.y - cy) };
+        });
+        const newEdges = clipEdges.map(ed => ({
+          ...ed, id: makeEdgeId(), src: idMap[ed.src] ?? ed.src, tgt: idMap[ed.tgt] ?? ed.tgt,
+        }));
+        const allNodes = [...nodesRef.current, ...newNodes];
+        const allEdges = [...edgesRef.current, ...newEdges];
+        setNodes(allNodes); setEdges(allEdges);
+        if (newNodes.length === 1) { setSelected({ type: "node", id: newNodes[0].id }); setMultiSelected([]); }
+        else { setMultiSelected(newNodes.map(n => n.id)); setSelected(null); }
+        pushHistRef.current(allNodes, allEdges);
         return;
       }
       if (e.key === "Escape") {
@@ -692,6 +727,11 @@ export default function MindMap() {
   const onNodeMouseDown = useCallback((e, nodeId) => {
     if (connFrom) return;
     e.stopPropagation();
+    if (e.shiftKey) {
+      setSelected(null);
+      setMultiSelected(prev => prev.includes(nodeId) ? prev.filter(id => id !== nodeId) : [...prev, nodeId]);
+      return;
+    }
     const curMulti = multiSelected;
     if (curMulti.length > 1 && curMulti.includes(nodeId)) {
       const origPositions = {};
@@ -972,7 +1012,7 @@ export default function MindMap() {
             <span>{edges.length} edges</span>
             <span>{Math.round(zoom * 100)}%</span>
             {connFrom && <span className="infobar-hint">click target — esc to cancel</span>}
-            {multiSelected.length > 1 && <span className="infobar-hint">shift+drag to re-select · drag any node to move group</span>}
+            {multiSelected.length > 0 && <span className="infobar-hint">shift+click to add/remove · drag any selected node to move group</span>}
           </div>
         </div>
 
@@ -981,9 +1021,9 @@ export default function MindMap() {
           <div className="sidebar-resize" onMouseDown={e => { resizing.current = { startX: e.clientX, startWidth: sidebarWidth }; e.preventDefault(); }}/>
 
           <div className="sidebar-header">
-            <span className="sidebar-title">{sidebarTab === "help" ? "Help & Docs" : selectedNode ? "Node" : selectedEdge ? "Edge" : "Mind Map"}</span>
+            <span className="sidebar-title">{sidebarTab === "help" ? "Help & Docs" : multiSelected.length > 0 ? `${multiSelected.length} Nodes` : selectedNode ? "Node" : selectedEdge ? "Edge" : "Mind Map"}</span>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              {selected && sidebarTab === "edit" && <button className="btn danger" style={{ padding: "3px 8px", fontSize: "10px" }} onClick={deleteSelected}>delete</button>}
+              {selected && sidebarTab === "edit" && multiSelected.length === 0 && <button className="btn danger" style={{ padding: "3px 8px", fontSize: "10px" }} onClick={deleteSelected}>delete</button>}
               {isMobile && <button style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 18, padding: "0 2px", lineHeight: 1 }} onClick={() => setSidebarOpen(false)}>×</button>}
             </div>
           </div>
@@ -1107,8 +1147,24 @@ export default function MindMap() {
               </>
             )}
 
+            {/* ── Multi-select panel ── */}
+            {sidebarTab === "edit" && multiSelected.length > 0 && (
+              <>
+                <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.7 }}>
+                  <span style={{ color: "var(--text)" }}>{multiSelected.length}</span> nodes &nbsp;·&nbsp; <span style={{ color: "var(--text)" }}>{selectionEdgeCount}</span> connections between them
+                </div>
+                <div style={{ fontSize: 10, color: "var(--muted)" }}>Shift+click to add/remove · Shift+drag to redraw box</div>
+                <div className="section-label">Export selection</div>
+                <div className="btn-row">
+                  <button className="btn" style={{ flex: 1 }} onClick={() => exportJSON(true)}>↓ JSON</button>
+                  <button className="btn" style={{ flex: 1 }} onClick={() => exportCSV(true)}>↓ CSV</button>
+                </div>
+                <div style={{ fontSize: 10, color: "var(--muted)" }}>⌘C to copy · ⌘V to paste at cursor · Delete to remove</div>
+              </>
+            )}
+
             {/* ── Global settings + export/import ── */}
-            {sidebarTab === "edit" && !selected && (
+            {sidebarTab === "edit" && !selected && multiSelected.length === 0 && (
               <>
                 <div className="section-label" style={{ marginTop: 0, borderTop: "none", paddingTop: 0 }}>Global display</div>
                 <div className="toggle-group">
@@ -1162,6 +1218,7 @@ export default function MindMap() {
                     ["N", "New node at cursor (hover canvas)"],
                     ["⌘C / ⌘V", "Copy / paste node at cursor"],
                     ["Shift + drag", "Draw selection box (multi-select)"],
+                    ["Shift + click node", "Add / remove node from selection"],
                     ["Delete / ⌫", "Delete selected node, edge, or group"],
                     ["⌘Z", "Undo"],
                     ["⌘⇧Z / ⌘Y", "Redo"],
