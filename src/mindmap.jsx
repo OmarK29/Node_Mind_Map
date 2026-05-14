@@ -34,7 +34,7 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
 
 .node {
   position: absolute;
-  min-width: 160px;
+  min-width: 60px;
   background: var(--node-header);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1437,7 +1437,7 @@ export default function MindMap() {
                     )}
                     <div className="field">
                       <label>Width (px)</label>
-                      <input type="number" min="100" placeholder={settings.node.maxWidth} value={selectedNode.maxWidth ?? ""} onChange={e => updateNode(selectedNode.id, "maxWidth", e.target.value === "" ? null : Number(e.target.value))}/>
+                      <input type="number" min="60" placeholder={settings.node.maxWidth} value={selectedNode.maxWidth ?? ""} onChange={e => updateNode(selectedNode.id, "maxWidth", e.target.value === "" ? null : Number(e.target.value))}/>
                     </div>
                   </>
                 )}
@@ -1752,7 +1752,7 @@ export default function MindMap() {
                     </div>
                     <div className="field">
                       <label>Node width (px)</label>
-                      <input type="number" min="100" value={settings.node.maxWidth} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, maxWidth: Number(e.target.value) } }))}/>
+                      <input type="number" min="60" value={settings.node.maxWidth} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, maxWidth: Number(e.target.value) } }))}/>
                     </div>
                     <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2, marginTop: 4 }}>Edges / paths</div>
                     <div style={{ display: "flex", gap: 8 }}>
