@@ -33,6 +33,7 @@ Some uses: brainstorming, planning, flowing a debate, annotating a paper.
 ### Multiple Maps
 - Create, rename, and delete maps that are all stored locally
 - Switch between maps; each saves its own state automatically
+- Deleted maps can be restored via a banner that appears immediately after deletion
 
 ### Background (per map)
 - Pattern type: dots, grid, or plain
@@ -41,7 +42,7 @@ Some uses: brainstorming, planning, flowing a debate, annotating a paper.
 
 ### Sidebar
 - **Edit tab** — node editor, edge editor, multi-select controls, global display settings, export/import
-- **Maps tab** — map list, create/rename/delete maps, background settings
+- **Maps tab** — map list, create/rename/delete maps, background settings, map-wide style defaults
 - **Help tab** — quick start guide, keyboard shortcuts, ready-to-copy AI prompts
 
 ### Global Display Toggles
@@ -49,6 +50,12 @@ Some uses: brainstorming, planning, flowing a debate, annotating a paper.
 - Show/hide neighbor list on all nodes
 - Show path name or relation label in neighbor lists
 - Show node IDs on canvas
+
+### Styling
+- **Map-wide style defaults** (Maps tab, collapsed by default): header node name size/color; body node name/body size/color and max width; edge line color/width/style and label size/width
+- **Per-node style overrides** (node editor, collapsed): name size/color, body size/color, max width — blank fields inherit from map defaults
+- **Per-edge style overrides** (edge editor, collapsed): line color/width/style, label size/width — blank fields inherit from map defaults
+- Edge line style: solid, dashed, or dotted
 
 ### Keyboard Shortcuts
 | Key | Action |
@@ -65,8 +72,10 @@ Some uses: brainstorming, planning, flowing a debate, annotating a paper.
 
 ### Export & Import
 - Export whole map or selection as **JSON**, **CSV**, or **TXT** (plain-text notes format)
+- JSON export includes background and style settings
 - TXT export orders nodes top-to-bottom, then left-to-right
 - Import **JSON** or **TXT** — both merge with the current map, shifting new nodes to avoid overlap
+- JSON import applies the exported background if present; undoable with the same ⌘Z that undoes the node import
 - After creating a node, focus jumps to the Name field automatically — press **Enter** to move to the body
 
 ### History
@@ -86,10 +95,11 @@ Each node starts with a backtick line. Body follows. Connections start with `=`.
 `Node Name
 Body text (optional, can span multiple lines)
 = relation type, path label : Other Node
-= : Node With No Labels
+= : Second Node
 
 
 `Second Node
+Connected to the first with no path relation type or name
 ```
 
 Connection line: `= relation type, path label : Other Node Name`  
@@ -106,9 +116,6 @@ Omit either part: `= rel : Name` or `= , label : Name` or `= : Name` are all val
 - **Folder / collapse feature** — collapse everything connected under a header node; sidebar button to list all headers and toggle visibility of their subtrees
 
 ### Styling
-- Color coding per node and per path
-- Per-node text size, color, and weight
-- Map-wide text defaults (headers, body, paths)
 
 ### AI Integration
 - Tool to parse a paper or article line-by-line and extract Claim / Reasoning / Evidence / Source / Assumption nodes with relations automatically
