@@ -64,7 +64,8 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
 .bg-type-btn:hover { color: var(--text); }
 .bg-type-btn.active { border-color: var(--accent); color: var(--accent); }
 
-.node-name { padding: 8px 12px 7px; font-size: 12px; font-weight: 500; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 6px; }
+.node-name { padding: 8px 12px 7px; font-size: 12px; font-weight: 500; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 6px; }
+.node-name-text { flex: 1; min-width: 0; word-break: break-word; overflow-wrap: break-word; padding-top: 1px; }
 .node.header-node .node-name { color: var(--accent2); }
 .node-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 .node.header-node .node-dot { background: var(--accent2); }
@@ -1272,7 +1273,7 @@ export default function MindMap() {
                   onMouseDown={e => onNodeMouseDown(e, n.id)}
                   onClick={e => onNodeClick(e, n.id)}
                 >
-                  <div className="node-name" style={{ fontSize: _nameSize, ...(_nameColor ? { color: _nameColor } : {}) }}><div className="node-dot"/>{n.name}</div>
+                  <div className="node-name" style={{ fontSize: _nameSize, ...(_nameColor ? { color: _nameColor } : {}) }}><div className="node-dot"/><span className="node-name-text">{n.name}</span></div>
                   {globalShow.nodeIds && <div className="node-id-badge">{n.id}</div>}
                   {showBody && <div className="node-body" style={{ fontSize: _bodySize, ...(_bodyColor ? { color: _bodyColor } : {}) }}>{n.body}</div>}
                   {showNbr && (
