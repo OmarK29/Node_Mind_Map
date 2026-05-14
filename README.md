@@ -61,6 +61,7 @@ Some uses: brainstorming, planning, flowing a debate, annotating a paper.
 | Key | Action |
 |-----|--------|
 | `N` | New node at cursor (hover canvas first) |
+| `C` | Connect selected node to next clicked node |
 | `⌘C` | Copy selected node or selection |
 | `⌘V` | Paste at cursor (or view center) |
 | `Delete` / `⌫` | Delete selected node, edge, or group |

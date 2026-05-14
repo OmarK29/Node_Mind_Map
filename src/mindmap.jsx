@@ -893,6 +893,11 @@ export default function MindMap() {
         setSidebarOpen(true);
         return;
       }
+      if (e.key === "c" && !mod && !e.target.matches("input,textarea") && selected?.type === "node") {
+        e.preventDefault();
+        setConnFrom(prev => prev?.nodeId === selected.id ? null : { nodeId: selected.id });
+        return;
+      }
       if (mod && e.key === "c" && !e.target.matches("input,textarea")) {
         if (multiSelected.length > 0) {
           const ids = new Set(multiSelected);
@@ -1885,6 +1890,7 @@ export default function MindMap() {
                 <div className="help-block">
                   {[
                     ["N", "New node at cursor (hover canvas)"],
+                    ["C", "Connect selected node to next clicked node"],
                     ["⌘C / ⌘V", "Copy / paste node at cursor"],
                     ["Shift + drag", "Draw selection box (multi-select)"],
                     ["Shift + click node", "Add / remove node from selection"],
