@@ -1,0 +1,911 @@
+{
+  "nodes": [
+    {
+      "showBody": true,
+      "showNeighbors": true,
+      "w": 400,
+      "h": 871,
+      "id": "n_start",
+      "name": "Welcome to Mind Map",
+      "body": "This map is a tour of every feature.\n\nStart here and follow the connections outward. Each cluster shows something different.\n\nTip: press ⊙ (fit button) to see everything at once.",
+      "x": 1294.4042280040492,
+      "y": 28.218358212361395,
+      "nameSize": 50,
+      "nameColor": "#c8b97a",
+      "bodySize": 30,
+      "maxWidth": 400
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 51,
+      "id": "n_nodes_header",
+      "name": "1 · Nodes",
+      "body": "",
+      "x": 647.5713781400419,
+      "y": -274.21486447450496
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 83,
+      "id": "n_header_example",
+      "name": "Header Node",
+      "body": "",
+      "x": 648.045464591674,
+      "y": -403.9048688793495
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 221,
+      "id": "n_body_example",
+      "name": "Body Node",
+      "body": "Nodes with text in the body look like this. The body can hold notes, quotes, evidence, anything.\n\nLeave body empty → becomes a header node (styled differently).",
+      "x": 960.5957077483574,
+      "y": -362.3779129539335
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 291,
+      "id": "n_image_example",
+      "name": "Image Node",
+      "body": "Paste any public image URL into the Image URL field in the sidebar. Great for screenshots, diagrams, or reference images.",
+      "imageUrl": "https://images.unsplash.com/photo-1462275646964-a0e3386b89fa?w=400&q=60",
+      "x": 917.2494254287375,
+      "y": -91.21543063134555
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 221,
+      "id": "n_id_example",
+      "name": "Node IDs",
+      "body": "Every node gets a unique timestamp ID like n_260513_143022_1.\n\nIDs don't show by default. Turn them on with the global toggle in Edit → Global Display.",
+      "x": 646.9437386124341,
+      "y": -176.01778222350976
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 83,
+      "id": "n_connections_header",
+      "name": "2 · Connections",
+      "body": "",
+      "x": 1449.8010971996387,
+      "y": -379.7901254577992
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 265,
+      "id": "n_conn_basic",
+      "name": "Basic connection",
+      "body": "Hover any node to see port dots (top, bottom, left, right).\n\nClick a port → click another node or port → done.\n\nPress Esc to cancel mid-connection.",
+      "x": 1884.3967050191866,
+      "y": -379.68667765321675
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 167,
+      "id": "n_conn_labeled",
+      "name": "Labeled path",
+      "body": "Select any connection and give it a name in the sidebar.\n\nThe label floats on the midpoint of the line.",
+      "x": 1794.7176243671058,
+      "y": -74.55831592284953
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 239,
+      "id": "n_conn_relational",
+      "name": "Relational path",
+      "body": "Connections can also have relation labels — one on each end.\n\nExamples: parent → child, cause → effect, before → after.\n\nUse presets or type your own in the sidebar.",
+      "x": 1210.775237810363,
+      "y": -378.43981406157496
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 203,
+      "id": "n_conn_typed",
+      "name": "Add by typing",
+      "body": "In the sidebar, use 'Add connection' and type a node name or ID.\n\nA dropdown shows matching nodes. Useful when the canvas is dense.",
+      "x": 1559.7039138462078,
+      "y": -195.2266745911616
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 51,
+      "id": "n_canvas_header",
+      "name": "3 · Canvas",
+      "body": "",
+      "x": 2169.5552015284507,
+      "y": -146.54640911315556
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 149,
+      "id": "n_pan",
+      "name": "Pan",
+      "body": "Drag anywhere on the empty canvas to pan.\n\nOn mobile: single finger drag.",
+      "x": 2168.213475532175,
+      "y": -333.55675879010687
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 221,
+      "id": "n_zoom",
+      "name": "Zoom",
+      "body": "Scroll wheel to zoom in and out.\n\nOn mobile: pinch to zoom.\n\nUse the + / − buttons in the toolbar, or ⊙ to fit everything in view.",
+      "x": 2407.576253639437,
+      "y": -229.85465521844742
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 211,
+      "id": "n_shortcuts",
+      "name": "Keyboard shortcuts",
+      "body": "N → new node at cursor\n⌘C / ⌘V → copy / paste\nDelete → remove selected\n⌘Z / ⌘⇧Z → undo / redo\nEsc → cancel / deselect\nShift + drag → selection box",
+      "x": 2168.6070244442144,
+      "y": -46.410601851921506
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 83,
+      "id": "n_multiselect_header",
+      "name": "4 · Multi-select",
+      "body": "",
+      "x": 1875.8540297884756,
+      "y": 306.3510522650903
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 185,
+      "id": "n_multi_shift",
+      "name": "Shift + drag",
+      "body": "Hold Shift and drag on the canvas to draw a selection rectangle.\n\nAll nodes inside get selected (highlighted in blue).",
+      "x": 2119.6905367755703,
+      "y": 244.79606025554637
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 221,
+      "id": "n_multi_actions",
+      "name": "Group actions",
+      "body": "With multiple nodes selected you can:\n→ Drag them together\n→ Delete the whole group\n→ Copy and paste the group\n→ Export just the selection as JSON, CSV, or TXT",
+      "x": 2354.647823245908,
+      "y": 228.57165768460308
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 83,
+      "id": "n_export_header",
+      "name": "5 · Import & Export",
+      "body": "",
+      "x": 2012.9502409858012,
+      "y": 545.1185638395846
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 203,
+      "id": "n_export_json",
+      "name": "JSON export",
+      "body": "Exports the full map — nodes, edges, background, and style settings.\n\nUse this to back up, share, or hand off to an AI to expand.",
+      "x": 2299.591103439923,
+      "y": 741.497279525933
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 185,
+      "id": "n_export_csv",
+      "name": "CSV export",
+      "body": "Exports a spreadsheet-friendly format — nodes in one section, connections in another.\n\nOpen in Excel or Google Sheets.",
+      "x": 1772.978714793817,
+      "y": 684.1265903662712
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 257,
+      "id": "n_export_txt",
+      "name": "TXT export",
+      "body": "A plain-text notes format.\n\nEach node starts with a backtick line:\n`Node Name\nBody text\n= relation : Other Node\n\nGreat for pasting into any AI chat.",
+      "x": 1989.5532758517727,
+      "y": 688.7544547657508
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 203,
+      "id": "n_import",
+      "name": "Import",
+      "body": "Import JSON or TXT files from the Edit tab (when nothing is selected).\n\nImports always merge — new nodes appear beside existing ones, never overwriting.",
+      "x": 2292.0889396945813,
+      "y": 499.950587468235
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 83,
+      "id": "n_ai_header",
+      "name": "6 · Use with AI",
+      "body": "",
+      "x": 1524.7350540896384,
+      "y": 943.2651129957413
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 221,
+      "id": "n_ai_generate",
+      "name": "Generate a map",
+      "body": "In the Help tab, copy the 'Generate a new map' prompt.\n\nPaste it into Claude, ChatGPT, or any AI. Replace [YOUR TOPIC]. It returns JSON you can import directly.",
+      "x": 1652.2571807499762,
+      "y": 1061.6260816925414
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 229,
+      "id": "n_ai_expand",
+      "name": "Expand your map",
+      "body": "Export your map as JSON, paste it into the 'Expand existing map' prompt.\n\nThe AI adds 5–8 new nodes. Import the result to merge them in.",
+      "x": 1906.8577980690645,
+      "y": 1007.7530625986533
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 221,
+      "id": "n_ai_parse",
+      "name": "Parse a paper",
+      "body": "Planned feature: paste any article or essay and the AI extracts:\nClaims, reasoning, evidence, sources, assumptions\n...and maps them with relation labels automatically.",
+      "x": 1387.2078233297334,
+      "y": 1053.3895731008336
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 51,
+      "id": "n_style_header",
+      "name": "7 · Styling",
+      "body": "",
+      "x": 863.4142604014716,
+      "y": 956.0242294926298
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 283,
+      "id": "n_style_map",
+      "name": "Map-wide defaults",
+      "body": "In Maps tab → Style defaults:\n→ Header node name size and color\n→ Body node name, body size, color, max width\n→ Edge line color, width, style (solid/dashed/dotted)\n→ Edge label size and width",
+      "x": 415.13680964415255,
+      "y": 884.5629650829007
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 230,
+      "id": "n_style_node",
+      "name": "Per-node overrides",
+      "body": "Select any node → Style overrides section.\n\nSet size and color just for that node. Leave fields blank to inherit map defaults.\n\nThis node uses nameSize 13 and a custom color.",
+      "x": 628.3712654818338,
+      "y": 1074.684364651072,
+      "nameSize": 13,
+      "nameColor": "#7ab8c8"
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 247,
+      "id": "n_style_edge",
+      "name": "Per-edge overrides",
+      "body": "Select any connection → Style overrides.\n\nChange just that line's color, width, or dash style.\n\nThe connection below this node is dashed.",
+      "x": 856.2069810638486,
+      "y": 1069.318945519824
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 221,
+      "id": "n_style_bg",
+      "name": "Background",
+      "body": "Maps tab → Background:\n→ Pattern: dots, grid, or plain\n→ Background color (color picker)\n→ Dot/grid color\n→ Image URL — paste any photo URL for a custom background",
+      "x": 1081.038779151881,
+      "y": 1071.6924729962884
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 83,
+      "id": "n_maps_header",
+      "name": "8 · Multiple Maps",
+      "body": "",
+      "x": 914.8917109470958,
+      "y": 566.6714686753353
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 185,
+      "id": "n_maps_create",
+      "name": "Create a map",
+      "body": "Maps tab → + New Map.\n\nEach map is completely independent — its own nodes, edges, background, and style defaults.",
+      "x": 629.2570004822103,
+      "y": 681.0267735456046
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 167,
+      "id": "n_maps_rename",
+      "name": "Rename a map",
+      "body": "Click the ✎ pencil icon next to any map name to rename it inline.\n\nPress Enter or click away to save.",
+      "x": 846.2979294546356,
+      "y": 681.3451545069125
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 229,
+      "id": "n_maps_restore",
+      "name": "Restore deleted map",
+      "body": "Delete a map with ✕. A banner appears immediately at the bottom of the Maps tab with a Restore button.\n\nWorks until you navigate away.",
+      "x": 1060.7294488940368,
+      "y": 680.0559959472832
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 83,
+      "id": "n_usecases_header",
+      "name": "9 · Example Uses",
+      "body": "",
+      "x": 867.6103687491268,
+      "y": 268.5024768581055
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 221,
+      "id": "n_use_brainstorm",
+      "name": "Brainstorm",
+      "body": "Dump every idea as a node, don't worry about structure.\n\nOnce you have 10–20 nodes, start connecting related ones. Clusters will emerge naturally.\n\n",
+      "x": 605.8817606436187,
+      "y": 362.8630206630159
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 239,
+      "id": "n_use_debate",
+      "name": "Flow a debate",
+      "body": "Use relation labels to map arguments:\n→ Claim\n→ Reasoning for Claim\n→ Evidence for Reasoning\n→ Source for Evidence\n→ Assumption under Claim\n\nConnect rebuttals with 'counters' relation.",
+      "x": 368.7703839060659,
+      "y": 92.84985137739714
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 247,
+      "id": "n_use_paper",
+      "name": "Annotate a paper",
+      "body": "Paste the paper URL as a background image (if it's a screenshot).\n\nOr export each section as a node, connect them with 'supports', 'references', 'contradicts' relations.",
+      "x": 371.5703617505351,
+      "y": 371.06687706310913
+    },
+    {
+      "showBody": true,
+      "showNeighbors": false,
+      "w": 200,
+      "h": 239,
+      "id": "n_use_plan",
+      "name": "Plan a project",
+      "body": "Header nodes = phases or folders.\nBody nodes = tasks or deliverables.\nRelations = before → after, blocks → unblocks.\n\nExport as CSV to move into a spreadsheet.",
+      "x": 606.9672527873167,
+      "y": 94.40506714458475
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_1778788350306_3",
+      "src": "n_start",
+      "tgt": "n_multiselect_header",
+      "srcPort": "right",
+      "tgtPort": "left",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_7",
+      "src": "n_connections_header",
+      "tgt": "n_conn_typed",
+      "srcPort": "right",
+      "tgtPort": "left",
+      "label": "sidebar",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_8",
+      "src": "n_style_header",
+      "tgt": "n_style_node",
+      "srcPort": "bottom",
+      "tgtPort": "top",
+      "label": "per-node",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_9",
+      "src": "n_style_header",
+      "tgt": "n_style_edge",
+      "srcPort": "bottom",
+      "tgtPort": "top",
+      "label": "per-edge",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_10",
+      "src": "n_style_header",
+      "tgt": "n_style_bg",
+      "srcPort": "bottom",
+      "tgtPort": "top",
+      "label": "canvas",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_11",
+      "src": "n_usecases_header",
+      "tgt": "n_use_brainstorm",
+      "srcPort": "left",
+      "tgtPort": "right",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_15",
+      "src": "n_connections_header",
+      "srcPort": "right",
+      "tgt": "n_conn_labeled",
+      "tgtPort": "top",
+      "label": "named",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_16",
+      "src": "n_multiselect_header",
+      "srcPort": "right",
+      "tgt": "n_multi_shift",
+      "tgtPort": "left",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_17",
+      "src": "n_canvas_header",
+      "srcPort": "bottom",
+      "tgt": "n_shortcuts",
+      "tgtPort": "top",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_19",
+      "src": "n_nodes_header",
+      "srcPort": "bottom",
+      "tgt": "n_start",
+      "tgtPort": "top",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_20",
+      "src": "n_nodes_header",
+      "srcPort": "top",
+      "tgt": "n_header_example",
+      "tgtPort": "bottom",
+      "label": "Both of these are headers",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_21",
+      "src": "n_nodes_header",
+      "srcPort": "right",
+      "tgt": "n_body_example",
+      "tgtPort": "left",
+      "label": "Has body",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_22",
+      "src": "n_nodes_header",
+      "srcPort": "bottom",
+      "tgt": "n_image_example",
+      "tgtPort": "top",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_24",
+      "src": "n_pan",
+      "srcPort": "bottom",
+      "tgt": "n_canvas_header",
+      "tgtPort": "top",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_26",
+      "src": "n_multiselect_header",
+      "srcPort": "right",
+      "tgt": "n_multi_actions",
+      "tgtPort": "left",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_27",
+      "src": "n_maps_create",
+      "srcPort": "top",
+      "tgt": "n_maps_header",
+      "tgtPort": "left",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_28",
+      "src": "n_maps_rename",
+      "srcPort": "top",
+      "tgt": "n_maps_header",
+      "tgtPort": "bottom",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_29",
+      "src": "n_maps_header",
+      "srcPort": "right",
+      "tgt": "n_maps_restore",
+      "tgtPort": "top",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_32",
+      "src": "n_export_header",
+      "srcPort": "right",
+      "tgt": "n_export_json",
+      "tgtPort": "left",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_38",
+      "src": "n_usecases_header",
+      "srcPort": "bottom",
+      "tgt": "n_use_paper",
+      "tgtPort": "top",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_39",
+      "src": "n_usecases_header",
+      "srcPort": "bottom",
+      "tgt": "n_use_debate",
+      "tgtPort": "top",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_41",
+      "src": "n_ai_header",
+      "srcPort": "bottom",
+      "tgt": "n_ai_generate",
+      "tgtPort": "top",
+      "label": "prompt",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_42",
+      "src": "n_ai_header",
+      "srcPort": "bottom",
+      "tgt": "n_ai_parse",
+      "tgtPort": "top",
+      "label": "planned",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788350306_43",
+      "src": "n_start",
+      "srcPort": "bottom",
+      "tgt": "n_style_header",
+      "tgtPort": "top",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788645247_87",
+      "src": "n_connections_header",
+      "srcPort": "top",
+      "tgt": "n_conn_basic",
+      "tgtPort": "left",
+      "label": "port click",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788852259_88",
+      "src": "n_canvas_header",
+      "srcPort": "right",
+      "tgt": "n_zoom",
+      "tgtPort": "left",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778788867760_89",
+      "src": "n_start",
+      "srcPort": "right",
+      "tgt": "n_canvas_header",
+      "tgtPort": "left",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778789060088_90",
+      "src": "n_ai_expand",
+      "srcPort": "right",
+      "tgt": "n_export_json",
+      "tgtPort": "bottom",
+      "label": "feed into",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778789099119_91",
+      "src": "n_export_header",
+      "srcPort": "right",
+      "tgt": "n_import",
+      "tgtPort": "left",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778789116811_92",
+      "src": "n_export_header",
+      "srcPort": "bottom",
+      "tgt": "n_export_txt",
+      "tgtPort": "top",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778789119558_93",
+      "src": "n_export_csv",
+      "srcPort": "top",
+      "tgt": "n_export_header",
+      "tgtPort": "bottom",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778789160047_94",
+      "src": "n_start",
+      "srcPort": "left",
+      "tgt": "n_maps_header",
+      "tgtPort": "right",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778789180541_95",
+      "src": "n_use_plan",
+      "srcPort": "bottom",
+      "tgt": "n_usecases_header",
+      "tgtPort": "top",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778789184954_96",
+      "src": "n_usecases_header",
+      "srcPort": "right",
+      "tgt": "n_start",
+      "tgtPort": "left",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778789306317_97",
+      "src": "n_start",
+      "srcPort": "bottom",
+      "tgt": "n_ai_header",
+      "tgtPort": "top",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778789322671_98",
+      "src": "n_start",
+      "srcPort": "right",
+      "tgt": "n_export_header",
+      "tgtPort": "top",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778789614401_100",
+      "src": "n_connections_header",
+      "srcPort": "bottom",
+      "tgt": "n_start",
+      "tgtPort": "top",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778789638072_101",
+      "src": "n_conn_relational",
+      "srcPort": "right",
+      "tgt": "n_connections_header",
+      "tgtPort": "left",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778789847397_102",
+      "src": "n_ai_header",
+      "srcPort": "right",
+      "tgt": "n_ai_expand",
+      "tgtPort": "top",
+      "label": "prompt",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778790048002_103",
+      "src": "n_style_bg",
+      "srcPort": "top",
+      "tgt": "n_style_header",
+      "tgtPort": "right",
+      "label": "dashed edge",
+      "relSrc": "",
+      "relTgt": "",
+      "lineStyle": "dashed"
+    },
+    {
+      "id": "e_1778790116272_104",
+      "src": "n_nodes_header",
+      "srcPort": "bottom",
+      "tgt": "n_id_example",
+      "tgtPort": "top",
+      "label": "",
+      "relSrc": "",
+      "relTgt": ""
+    },
+    {
+      "id": "e_1778790163290_105",
+      "src": "n_style_map",
+      "srcPort": "right",
+      "tgt": "n_style_header",
+      "tgtPort": "left",
+      "label": "map-wide",
+      "relSrc": "",
+      "relTgt": ""
+    }
+  ],
+  "background": {
+    "type": "dots",
+    "bgColor": "#0e0f11",
+    "dotColor": "#2a2c30",
+    "imageUrl": ""
+  },
+  "settings": {
+    "header": {
+      "nameSize": 25,
+      "nameColor": ""
+    },
+    "node": {
+      "nameSize": 20,
+      "nameColor": "",
+      "bodySize": 12,
+      "bodyColor": "",
+      "maxWidth": 200
+    },
+    "edge": {
+      "color": "",
+      "width": 2,
+      "style": "solid",
+      "labelSize": 12,
+      "labelWidth": 72
+    }
+  }
+}
