@@ -208,6 +208,11 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
 const STORAGE_KEY = "mindmap_v2";
 const STORAGE_KEY_V1 = "mindmap_v1";
 const DEFAULT_BG = { type: "dots", bgColor: "#0e0f11", dotColor: "#2a2c30", imageUrl: "" };
+const DEFAULT_SETTINGS = {
+  header: { nameSize: 12, nameColor: "" },
+  node: { nameSize: 12, nameColor: "", bodySize: 11, bodyColor: "", maxWidth: 280 },
+  edge: { color: "", width: 1.5, style: "solid", labelSize: 10, labelWidth: 72 },
+};
 
 let _seq = 0;
 function makeNodeId() {
@@ -271,7 +276,7 @@ export default function MindMap() {
     const initActiveMap = initMaps.find(m => m.id === initActiveId) || initMaps[0];
     const initNodes = initActiveMap.nodes?.length ? initActiveMap.nodes : [DEFAULT_NODE];
     const initEdges = initActiveMap.edges || [];
-    _init.current = { maps: initMaps, activeMapId: initActiveId, nodes: initNodes, edges: initEdges, background: initActiveMap.background || { ...DEFAULT_BG } };
+    _init.current = { maps: initMaps, activeMapId: initActiveId, nodes: initNodes, edges: initEdges, background: initActiveMap.background || { ...DEFAULT_BG }, settings: initActiveMap.settings || { ...DEFAULT_SETTINGS } };
   }
   const _i = _init.current;
 
@@ -280,6 +285,7 @@ export default function MindMap() {
   const [nodes, setNodes] = useState(_i.nodes);
   const [edges, setEdges] = useState(_i.edges);
   const [background, setBackground] = useState(_i.background);
+  const [settings, setSettings] = useState(_i.settings);
   const [selected, setSelected] = useState(null);
   const [pan, setPan] = useState({ x: 80, y: 60 });
   const [zoom, setZoom] = useState(1);
@@ -301,6 +307,7 @@ export default function MindMap() {
   const [selBox, setSelBox] = useState(null);
   const [hasClipboard, setHasClipboard] = useState(false);
   const [renamingMapId, setRenamingMapId] = useState(null);
+  const [lastDeletedMapInfo, setLastDeletedMapInfo] = useState(null);
 
   // History
   const hist = useRef([{ nodes: _i.nodes, edges: _i.edges }]);
@@ -321,6 +328,7 @@ export default function MindMap() {
   // Stable refs for touch handlers and deferred callbacks
   const mapsRef = useRef(maps);
   const backgroundRef = useRef(background);
+  const settingsRef = useRef(settings);
   const activeMapIdRef = useRef(activeMapId);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -382,7 +390,7 @@ export default function MindMap() {
       }
     }
     const ts = new Date().toISOString().slice(0,10);
-    dlBlob(JSON.stringify({ nodes: expNodes, edges: expEdges }, null, 2), `mindmap_${ts}.json`, "application/json");
+    dlBlob(JSON.stringify({ nodes: expNodes, edges: expEdges, background, settings }, null, 2), `mindmap_${ts}.json`, "application/json");
   }, [nodes, edges, selectedNode, multiSelected]);
 
   const exportCSV = useCallback((selOnly = false) => {
@@ -632,14 +640,16 @@ export default function MindMap() {
     if (!newMap) return;
     setMaps(prev => prev.map(m =>
       m.id === activeMapIdRef.current
-        ? { ...m, nodes: nodesRef.current, edges: edgesRef.current, background: backgroundRef.current }
+        ? { ...m, nodes: nodesRef.current, edges: edgesRef.current, background: backgroundRef.current, settings: settingsRef.current }
         : m
     ));
     setActiveMapId(newMapId);
     setNodes(newMap.nodes?.length ? newMap.nodes : [DEFAULT_NODE]);
     setEdges(newMap.edges || []);
     setBackground(newMap.background || { ...DEFAULT_BG });
+    setSettings(newMap.settings || { ...DEFAULT_SETTINGS });
     setSelected(null); setMultiSelected([]); setMultiSelectMode(false); setConnFrom(null);
+    setLastDeletedMapInfo(null);
     hist.current = [{ nodes: newMap.nodes?.length ? newMap.nodes : [DEFAULT_NODE], edges: newMap.edges || [] }];
     histIdx.current = 0;
     setHistVer(v => v + 1);
@@ -651,14 +661,15 @@ export default function MindMap() {
     const initNodes = [firstNode];
     setMaps(prev => [
       ...prev.map(m => m.id === activeMapIdRef.current
-        ? { ...m, nodes: nodesRef.current, edges: edgesRef.current, background: backgroundRef.current }
+        ? { ...m, nodes: nodesRef.current, edges: edgesRef.current, background: backgroundRef.current, settings: settingsRef.current }
         : m),
-      { id: newId, name: "New Map", nodes: initNodes, edges: [], background: { ...DEFAULT_BG } },
+      { id: newId, name: "New Map", nodes: initNodes, edges: [], background: { ...DEFAULT_BG }, settings: { ...DEFAULT_SETTINGS } },
     ]);
     setActiveMapId(newId);
     setNodes(initNodes);
     setEdges([]);
     setBackground({ ...DEFAULT_BG });
+    setSettings({ ...DEFAULT_SETTINGS });
     setSelected(null); setMultiSelected([]); setMultiSelectMode(false); setConnFrom(null);
     hist.current = [{ nodes: initNodes, edges: [] }];
     histIdx.current = 0;
@@ -667,6 +678,12 @@ export default function MindMap() {
 
   const deleteMap = useCallback((mapId) => {
     if (mapsRef.current.length <= 1) return;
+    const toDelete = mapsRef.current.find(m => m.id === mapId);
+    const insertIdx = mapsRef.current.findIndex(m => m.id === mapId);
+    const savedMap = mapId === activeMapIdRef.current
+      ? { ...toDelete, nodes: nodesRef.current, edges: edgesRef.current, background: backgroundRef.current, settings: settingsRef.current }
+      : toDelete;
+    setLastDeletedMapInfo({ map: savedMap, insertIdx });
     const newMaps = mapsRef.current.filter(m => m.id !== mapId);
     setMaps(newMaps);
     if (mapId === activeMapIdRef.current) {
@@ -675,6 +692,7 @@ export default function MindMap() {
       setNodes(nextMap.nodes?.length ? nextMap.nodes : [DEFAULT_NODE]);
       setEdges(nextMap.edges || []);
       setBackground(nextMap.background || { ...DEFAULT_BG });
+      setSettings(nextMap.settings || { ...DEFAULT_SETTINGS });
       setSelected(null); setMultiSelected([]); setMultiSelectMode(false); setConnFrom(null);
       hist.current = [{ nodes: nextMap.nodes?.length ? nextMap.nodes : [DEFAULT_NODE], edges: nextMap.edges || [] }];
       histIdx.current = 0;
@@ -686,13 +704,20 @@ export default function MindMap() {
     setMaps(prev => prev.map(m => m.id === mapId ? { ...m, name } : m));
   }, []);
 
+  const restoreDeletedMap = useCallback(() => {
+    if (!lastDeletedMapInfo) return;
+    const { map, insertIdx } = lastDeletedMapInfo;
+    setMaps(prev => { const next = [...prev]; next.splice(Math.min(insertIdx, next.length), 0, map); return next; });
+    setLastDeletedMapInfo(null);
+  }, [lastDeletedMapInfo]);
+
   // ── Effects ───────────────────────────────────────────────────────────────────
   useEffect(() => {
     const updatedMaps = maps.map(m =>
-      m.id === activeMapId ? { ...m, nodes, edges, background } : m
+      m.id === activeMapId ? { ...m, nodes, edges, background, settings } : m
     );
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ maps: updatedMaps, activeMapId }));
-  }, [nodes, edges, background, maps, activeMapId]);
+  }, [nodes, edges, background, settings, maps, activeMapId]);
 
   useEffect(() => { setAddConnInput(""); setShowDrop(false); }, [selected?.id]);
   useEffect(() => { if (selected) setSidebarTab("edit"); }, [selected]);
@@ -734,6 +759,7 @@ export default function MindMap() {
 
   useEffect(() => { mapsRef.current = maps; }, [maps]);
   useEffect(() => { backgroundRef.current = background; }, [background]);
+  useEffect(() => { settingsRef.current = settings; }, [settings]);
   useEffect(() => { activeMapIdRef.current = activeMapId; }, [activeMapId]);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
@@ -1165,16 +1191,33 @@ export default function MindMap() {
                 const d = cubicPath(sp.x, sp.y, tp.x, tp.y);
                 const isSel = selected?.id === e.id;
                 const hasLabel = e.label || e.relSrc || e.relTgt;
+                const _color = e.lineColor || settings.edge.color || undefined;
+                const _width = e.lineWidth ?? settings.edge.width;
+                const _style = e.lineStyle || settings.edge.style;
+                const _dashArray = _style === "dashed" ? "8 4" : _style === "dotted" ? "2 4" : undefined;
+                const _labelW = e.labelWidth ?? settings.edge.labelWidth;
+                const _labelSize = e.labelSize ?? settings.edge.labelSize;
+                const markerId = isSel ? "arr-sel" : _color ? `arr-c-${e.id}` : "arr";
                 return (
                   <g key={e.id}>
-                    <path d={d} className={`edge-path${isSel ? " selected" : ""}`} markerEnd={isSel ? "url(#arr-sel)" : "url(#arr)"}/>
+                    {_color && !isSel && (
+                      <defs>
+                        <marker id={`arr-c-${e.id}`} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                          <path d="M0 0 L6 3 L0 6 Z" fill={_color}/>
+                        </marker>
+                      </defs>
+                    )}
+                    <path d={d} className={`edge-path${isSel ? " selected" : ""}`}
+                      style={{ ...(_color && !isSel ? { stroke: _color } : {}), strokeWidth: _width, ...(_dashArray ? { strokeDasharray: _dashArray } : {}) }}
+                      markerEnd={`url(#${markerId})`}
+                    />
                     <path d={d} className="edge-hit" onClick={() => setSelected({ type: "edge", id: e.id })}/>
                     {hasLabel && (
                       <g>
-                        <rect x={mid.x-36} y={mid.y-10} width="72" height="20" rx="3" className="edge-label-bg" opacity="0.9"/>
+                        <rect x={mid.x - _labelW/2} y={mid.y-10} width={_labelW} height={20} rx="3" className="edge-label-bg" opacity="0.9"/>
                         {e.label
-                          ? <text x={mid.x} y={mid.y+1} textAnchor="middle" dominantBaseline="middle" className="edge-label-text">{e.label}</text>
-                          : <text x={mid.x} y={mid.y+1} textAnchor="middle" dominantBaseline="middle" className="edge-rel-text">{e.relSrc}→{e.relTgt}</text>
+                          ? <text x={mid.x} y={mid.y+1} textAnchor="middle" dominantBaseline="middle" className="edge-label-text" style={{ fontSize: _labelSize }}>{e.label}</text>
+                          : <text x={mid.x} y={mid.y+1} textAnchor="middle" dominantBaseline="middle" className="edge-rel-text" style={{ fontSize: _labelSize }}>{e.relSrc}→{e.relTgt}</text>
                         }
                       </g>
                     )}
@@ -1188,19 +1231,25 @@ export default function MindMap() {
               const nbrs = getNeighbors(n.id);
               const showBody = n.showBody && globalShow.body && n.body;
               const showNbr = n.showNeighbors && globalShow.neighbors && nbrs.length > 0;
+              const isHdr = isHeader(n);
+              const _nameSize = n.nameSize ?? (isHdr ? settings.header.nameSize : settings.node.nameSize);
+              const _nameColor = n.nameColor || (isHdr ? settings.header.nameColor || undefined : settings.node.nameColor || undefined);
+              const _bodySize = n.bodySize ?? settings.node.bodySize;
+              const _bodyColor = n.bodyColor || settings.node.bodyColor || undefined;
+              const _maxWidth = n.maxWidth ?? settings.node.maxWidth;
               return (
                 <div
                   key={n.id}
                   data-node-id={n.id}
-                  className={`node${selected?.id === n.id ? " selected" : ""}${multiSelected.includes(n.id) ? " multi-selected" : ""}${dragging?.nodeId === n.id ? " dragging" : ""}${isHeader(n) ? " header-node" : ""}${connFrom?.nodeId === n.id ? " conn-source" : ""}`}
-                  style={{ left: n.x, top: n.y }}
+                  className={`node${selected?.id === n.id ? " selected" : ""}${multiSelected.includes(n.id) ? " multi-selected" : ""}${dragging?.nodeId === n.id ? " dragging" : ""}${isHdr ? " header-node" : ""}${connFrom?.nodeId === n.id ? " conn-source" : ""}`}
+                  style={{ left: n.x, top: n.y, maxWidth: _maxWidth }}
                   ref={el => { if (el) nodeRefs.current[n.id] = el; }}
                   onMouseDown={e => onNodeMouseDown(e, n.id)}
                   onClick={e => onNodeClick(e, n.id)}
                 >
-                  <div className="node-name"><div className="node-dot"/>{n.name}</div>
+                  <div className="node-name" style={{ fontSize: _nameSize, ...(_nameColor ? { color: _nameColor } : {}) }}><div className="node-dot"/>{n.name}</div>
                   {globalShow.nodeIds && <div className="node-id-badge">{n.id}</div>}
-                  {showBody && <div className="node-body">{n.body}</div>}
+                  {showBody && <div className="node-body" style={{ fontSize: _bodySize, ...(_bodyColor ? { color: _bodyColor } : {}) }}>{n.body}</div>}
                   {showNbr && (
                     <div className="node-neighbors">
                       <div className="node-neighbors-label">connections</div>
@@ -1332,6 +1381,35 @@ export default function MindMap() {
                   ))}
                 </div>
 
+                <div className="section-label">Style overrides</div>
+                <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 4 }}>Leave blank to use map defaults.</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Name size (px)</label>
+                    <input type="number" min="8" max="40" placeholder={isHeader(selectedNode) ? settings.header.nameSize : settings.node.nameSize} value={selectedNode.nameSize ?? ""} onChange={e => updateNode(selectedNode.id, "nameSize", e.target.value === "" ? null : Number(e.target.value))}/>
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Name color</label>
+                    <input placeholder="inherit" value={selectedNode.nameColor || ""} onChange={e => updateNode(selectedNode.id, "nameColor", e.target.value)}/>
+                  </div>
+                </div>
+                {!isHeader(selectedNode) && (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label>Body size (px)</label>
+                      <input type="number" min="8" max="40" placeholder={settings.node.bodySize} value={selectedNode.bodySize ?? ""} onChange={e => updateNode(selectedNode.id, "bodySize", e.target.value === "" ? null : Number(e.target.value))}/>
+                    </div>
+                    <div className="field" style={{ flex: 1 }}>
+                      <label>Body color</label>
+                      <input placeholder="inherit" value={selectedNode.bodyColor || ""} onChange={e => updateNode(selectedNode.id, "bodyColor", e.target.value)}/>
+                    </div>
+                  </div>
+                )}
+                <div className="field">
+                  <label>Max width (px)</label>
+                  <input type="number" min="100" max="800" placeholder={settings.node.maxWidth} value={selectedNode.maxWidth ?? ""} onChange={e => updateNode(selectedNode.id, "maxWidth", e.target.value === "" ? null : Number(e.target.value))}/>
+                </div>
+
                 <div className="section-label">Connections</div>
                 {nodeEdges.length === 0
                   ? <span style={{ fontSize: 11, color: "var(--muted)" }}>No connections yet.</span>
@@ -1437,6 +1515,38 @@ export default function MindMap() {
                   <span style={{ color: "var(--accent)", fontFamily: "var(--mono)" }}>{nodes.find(n => n.id === selectedEdge.src)?.name}</span>
                   {" → "}
                   <span style={{ color: "var(--accent2)", fontFamily: "var(--mono)" }}>{nodes.find(n => n.id === selectedEdge.tgt)?.name}</span>
+                </div>
+
+                <div className="section-label">Style overrides</div>
+                <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 4 }}>Leave blank to use map defaults.</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Line color</label>
+                    <input placeholder="inherit" value={selectedEdge.lineColor || ""} onChange={e => updateEdge(selectedEdge.id, "lineColor", e.target.value)}/>
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Line width</label>
+                    <input type="number" min="0.5" max="10" step="0.5" placeholder={settings.edge.width} value={selectedEdge.lineWidth ?? ""} onChange={e => updateEdge(selectedEdge.id, "lineWidth", e.target.value === "" ? null : Number(e.target.value))}/>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Line style</label>
+                    <select value={selectedEdge.lineStyle || ""} onChange={e => updateEdge(selectedEdge.id, "lineStyle", e.target.value || null)}>
+                      <option value="">— map default —</option>
+                      <option value="solid">Solid</option>
+                      <option value="dashed">Dashed</option>
+                      <option value="dotted">Dotted</option>
+                    </select>
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Label size (px)</label>
+                    <input type="number" min="7" max="24" placeholder={settings.edge.labelSize} value={selectedEdge.labelSize ?? ""} onChange={e => updateEdge(selectedEdge.id, "labelSize", e.target.value === "" ? null : Number(e.target.value))}/>
+                  </div>
+                </div>
+                <div className="field">
+                  <label>Label width (px)</label>
+                  <input type="number" min="40" max="300" placeholder={settings.edge.labelWidth} value={selectedEdge.labelWidth ?? ""} onChange={e => updateEdge(selectedEdge.id, "labelWidth", e.target.value === "" ? null : Number(e.target.value))}/>
                 </div>
               </>
             )}
@@ -1557,6 +1667,81 @@ export default function MindMap() {
                   </div>
                 ))}
                 <button className="btn primary" style={{ width: "100%" }} onClick={createNewMap}>+ New Map</button>
+
+                {lastDeletedMapInfo && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", background: "rgba(200,122,122,0.1)", border: "1px solid var(--danger)", borderRadius: 5, fontSize: 11 }}>
+                    <span style={{ flex: 1, color: "var(--muted)" }}>Deleted <span style={{ color: "var(--text)" }}>{lastDeletedMapInfo.map.name}</span></span>
+                    <button className="btn" style={{ padding: "2px 8px", fontSize: 10, flexShrink: 0 }} onClick={restoreDeletedMap}>Restore</button>
+                  </div>
+                )}
+
+                <div className="section-label">Style defaults</div>
+                <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}>Header nodes (no body)</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Name size (px)</label>
+                    <input type="number" min="8" max="40" value={settings.header.nameSize} onChange={e => setSettings(s => ({ ...s, header: { ...s.header, nameSize: Number(e.target.value) } }))}/>
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Name color</label>
+                    <input placeholder="default" value={settings.header.nameColor} onChange={e => setSettings(s => ({ ...s, header: { ...s.header, nameColor: e.target.value } }))}/>
+                  </div>
+                </div>
+                <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2, marginTop: 4 }}>Body nodes</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Name size (px)</label>
+                    <input type="number" min="8" max="40" value={settings.node.nameSize} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, nameSize: Number(e.target.value) } }))}/>
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Name color</label>
+                    <input placeholder="default" value={settings.node.nameColor} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, nameColor: e.target.value } }))}/>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Body size (px)</label>
+                    <input type="number" min="8" max="40" value={settings.node.bodySize} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, bodySize: Number(e.target.value) } }))}/>
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Body color</label>
+                    <input placeholder="default" value={settings.node.bodyColor} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, bodyColor: e.target.value } }))}/>
+                  </div>
+                </div>
+                <div className="field">
+                  <label>Max node width (px)</label>
+                  <input type="number" min="100" max="800" value={settings.node.maxWidth} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, maxWidth: Number(e.target.value) } }))}/>
+                </div>
+                <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2, marginTop: 4 }}>Edges / paths</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Line color</label>
+                    <input placeholder="default" value={settings.edge.color} onChange={e => setSettings(s => ({ ...s, edge: { ...s.edge, color: e.target.value } }))}/>
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Line width</label>
+                    <input type="number" min="0.5" max="10" step="0.5" value={settings.edge.width} onChange={e => setSettings(s => ({ ...s, edge: { ...s.edge, width: Number(e.target.value) } }))}/>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Line style</label>
+                    <select value={settings.edge.style} onChange={e => setSettings(s => ({ ...s, edge: { ...s.edge, style: e.target.value } }))}>
+                      <option value="solid">Solid</option>
+                      <option value="dashed">Dashed</option>
+                      <option value="dotted">Dotted</option>
+                    </select>
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Label size (px)</label>
+                    <input type="number" min="7" max="24" value={settings.edge.labelSize} onChange={e => setSettings(s => ({ ...s, edge: { ...s.edge, labelSize: Number(e.target.value) } }))}/>
+                  </div>
+                </div>
+                <div className="field">
+                  <label>Label width (px)</label>
+                  <input type="number" min="40" max="300" value={settings.edge.labelWidth} onChange={e => setSettings(s => ({ ...s, edge: { ...s.edge, labelWidth: Number(e.target.value) } }))}/>
+                </div>
+                <button className="btn" style={{ fontSize: 10 }} onClick={() => setSettings({ ...DEFAULT_SETTINGS })}>↺ Reset to defaults</button>
 
                 <div className="section-label">Background</div>
                 <div className="field">
