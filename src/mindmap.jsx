@@ -314,6 +314,9 @@ export default function MindMap() {
   const mouseCanvasRef = useRef({ x: 0, y: 0 });
   const canvasHoveredRef = useRef(false);
   const selBoxStartRef = useRef(null);
+  const nameInputRef = useRef(null);
+  const bodyTextareaRef = useRef(null);
+  const pendingFocusId = useRef(null);
 
   // Stable refs for touch handlers and deferred callbacks
   const mapsRef = useRef(maps);
@@ -480,6 +483,118 @@ export default function MindMap() {
     reader.readAsText(file);
   }, []);
 
+  const exportTXT = useCallback((selOnly = false) => {
+    let expNodes = nodes, expEdges = edges;
+    if (selOnly) {
+      if (multiSelected.length > 0) {
+        const ids = new Set(multiSelected);
+        expNodes = nodes.filter(n => ids.has(n.id));
+        expEdges = edges.filter(e => ids.has(e.src) && ids.has(e.tgt));
+      } else if (selectedNode) {
+        expEdges = edges.filter(e => e.src === selectedNode.id || e.tgt === selectedNode.id);
+        const ids = new Set([selectedNode.id, ...expEdges.map(e => e.src), ...expEdges.map(e => e.tgt)]);
+        expNodes = nodes.filter(n => ids.has(n.id));
+      }
+    }
+    const sorted = [...expNodes].sort((a, b) => a.x - b.x || a.y - b.y);
+    const blocks = sorted.map(n => {
+      const lines = [`\`${n.name}`];
+      if (n.body?.trim()) lines.push(n.body.trim());
+      for (const e of expEdges) {
+        let rel = "", otherNode = null;
+        if (e.src === n.id) { otherNode = expNodes.find(t => t.id === e.tgt); rel = e.relSrc || ""; }
+        else if (e.tgt === n.id) { otherNode = expNodes.find(s => s.id === e.src); rel = e.relTgt || ""; }
+        if (!otherNode) continue;
+        const lbl = e.label || "";
+        const left = (rel && lbl) ? `${rel}, ${lbl}` : (rel || lbl);
+        lines.push(`= ${left}${left ? " " : ""}: ${otherNode.name}`);
+      }
+      return lines.join("\n");
+    });
+    const ts = new Date().toISOString().slice(0, 10);
+    dlBlob(blocks.join("\n\n\n"), `mindmap_${ts}.txt`, "text/plain");
+  }, [nodes, edges, selectedNode, multiSelected]);
+
+  const importTXT = useCallback((file) => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const text = ev.target.result;
+        // Split into blocks wherever a backtick-line begins (after any blank lines)
+        const rawBlocks = text.split(/\n{2,}(?=`)/);
+        const parsedNodes = [], allConns = [];
+
+        for (const block of rawBlocks) {
+          const lines = block.trim().split("\n");
+          if (!lines[0]?.startsWith("`")) continue;
+          const name = lines[0].slice(1).trim();
+          if (!name) continue;
+          const bodyLines = [], connLines = [];
+          for (const line of lines.slice(1)) {
+            if (line.startsWith("=")) connLines.push(line);
+            else bodyLines.push(line);
+          }
+          parsedNodes.push({ name, body: bodyLines.join("\n").trim() });
+          for (const line of connLines) {
+            const afterEq = line.slice(1).trim();
+            const ci = afterEq.lastIndexOf(" : ");
+            if (ci === -1) continue;
+            const leftPart = afterEq.slice(0, ci).trim();
+            const toName = afterEq.slice(ci + 3).trim();
+            if (!toName) continue;
+            let relType = "", relLabel = "";
+            if (leftPart.includes(",")) {
+              const comma = leftPart.indexOf(",");
+              relType = leftPart.slice(0, comma).trim();
+              relLabel = leftPart.slice(comma + 1).trim();
+            } else {
+              relType = leftPart;
+            }
+            allConns.push({ fromName: name, toName, relType, relLabel });
+          }
+        }
+
+        if (parsedNodes.length === 0) {
+          alert("No nodes found. Each node should start with `Name on its own line.");
+          return;
+        }
+
+        const curNodes = nodesRef.current, curEdges = edgesRef.current;
+        const startX = curNodes.length > 0 ? Math.max(...curNodes.map(n => n.x + (n.w || 180))) + 80 : 80;
+        const nameToNode = {};
+        const newNodes = parsedNodes.map((p, i) => {
+          const node = { id: makeNodeId(), name: p.name, body: p.body, x: startX + (i % 4) * 230, y: 80 + Math.floor(i / 4) * 150, w: 180, h: 44, showBody: true, showNeighbors: true };
+          nameToNode[p.name] = node;
+          return node;
+        });
+
+        const newEdges = [];
+        const edgeSet = new Set();
+        const edgeById = {};
+        for (const conn of allConns) {
+          const from = nameToNode[conn.fromName], to = nameToNode[conn.toName];
+          if (!from || !to) continue;
+          const key = [from.id, to.id].sort().join("--") + (conn.relLabel ? `--${conn.relLabel}` : "");
+          if (edgeSet.has(key)) {
+            const ex = edgeById[key];
+            if (ex && from.id === ex.tgt) ex.relTgt = conn.relType;
+          } else {
+            edgeSet.add(key);
+            const edge = { id: makeEdgeId(), src: from.id, tgt: to.id, srcPort: "right", tgtPort: "left", label: conn.relLabel || "", relSrc: conn.relType || "", relTgt: "" };
+            newEdges.push(edge);
+            edgeById[key] = edge;
+          }
+        }
+
+        const mergedNodes = [...curNodes, ...newNodes];
+        const mergedEdges = [...curEdges, ...newEdges];
+        setNodes(mergedNodes); setEdges(mergedEdges); setSelected(null);
+        pushHistRef.current(mergedNodes, mergedEdges);
+      } catch { alert("Could not parse file. Make sure nodes start with `Name."); }
+    };
+    reader.readAsText(file);
+  }, []);
+
   const doPaste = useCallback((explicitPos) => {
     if (!clipboardRef.current) return;
     const clip = clipboardRef.current;
@@ -575,6 +690,17 @@ export default function MindMap() {
 
   useEffect(() => { setAddConnInput(""); setShowDrop(false); }, [selected?.id]);
   useEffect(() => { if (selected) setSidebarTab("edit"); }, [selected]);
+
+  // Auto-focus name field after node creation (re-runs when sidebarTab switches to "edit")
+  useEffect(() => {
+    if (pendingFocusId.current && selected?.type === "node" && selected.id === pendingFocusId.current && sidebarTab === "edit") {
+      if (nameInputRef.current) {
+        nameInputRef.current.focus();
+        nameInputRef.current.select();
+        pendingFocusId.current = null;
+      }
+    }
+  }, [selected, sidebarTab]);
 
   useEffect(() => {
     let changed = false;
@@ -704,6 +830,8 @@ export default function MindMap() {
         const newNodes = [...nodesRef.current, newNode];
         setNodes(newNodes); setSelected({ type: "node", id });
         pushHistRef.current(newNodes, edgesRef.current);
+        pendingFocusId.current = id;
+        setSidebarOpen(true);
         return;
       }
       if (mod && e.key === "c" && !e.target.matches("input,textarea")) {
@@ -889,6 +1017,8 @@ export default function MindMap() {
     const newNodes = [...nodes, newNode];
     setNodes(newNodes); setSelected({ type: "node", id });
     pushHistory(newNodes, edges);
+    pendingFocusId.current = id;
+    setSidebarOpen(true);
   };
 
   const deleteSelected = useCallback(() => {
@@ -1166,12 +1296,17 @@ export default function MindMap() {
               <>
                 <div className="field">
                   <label>Name</label>
-                  <input value={selectedNode.name} onChange={e => updateNode(selectedNode.id, "name", e.target.value)}/>
+                  <input
+                    ref={nameInputRef}
+                    value={selectedNode.name}
+                    onChange={e => updateNode(selectedNode.id, "name", e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); bodyTextareaRef.current?.focus(); } }}
+                  />
                 </div>
                 <div style={{ fontSize: 10, color: "var(--muted)", fontFamily: "var(--mono)", marginTop: -6 }}>{selectedNode.id}</div>
                 <div className="field">
                   <label>Body / Notes</label>
-                  <textarea placeholder="Leave empty to make this a header node…" value={selectedNode.body} onChange={e => updateNode(selectedNode.id, "body", e.target.value)}/>
+                  <textarea ref={bodyTextareaRef} placeholder="Leave empty to make this a header node…" value={selectedNode.body} onChange={e => updateNode(selectedNode.id, "body", e.target.value)}/>
                 </div>
                 <div className="field">
                   <label>Image URL</label>
@@ -1238,6 +1373,7 @@ export default function MindMap() {
                 <div className="btn-row">
                   <button className="btn" style={{ flex: 1 }} onClick={() => exportJSON(true)}>↓ JSON</button>
                   <button className="btn" style={{ flex: 1 }} onClick={() => exportCSV(true)}>↓ CSV</button>
+                  <button className="btn" style={{ flex: 1 }} onClick={() => exportTXT(true)}>↓ TXT</button>
                 </div>
 
                 <div className="section-label">Copy / Multi-select</div>
@@ -1326,6 +1462,7 @@ export default function MindMap() {
                 <div className="btn-row">
                   <button className="btn" style={{ flex: 1 }} onClick={() => exportJSON(true)}>↓ JSON</button>
                   <button className="btn" style={{ flex: 1 }} onClick={() => exportCSV(true)}>↓ CSV</button>
+                  <button className="btn" style={{ flex: 1 }} onClick={() => exportTXT(true)}>↓ TXT</button>
                 </div>
 
                 <div className="section-label" style={{ marginTop: 8 }}/>
@@ -1366,15 +1503,22 @@ export default function MindMap() {
                 <div className="section-label">Export</div>
                 <div className="btn-row">
                   <button className="btn" style={{ flex: 1 }} onClick={() => exportJSON()}>↓ JSON</button>
-                  <button className="btn" style={{ flex: 1 }} onClick={() => exportCSV()}>↓ CSV / Excel</button>
+                  <button className="btn" style={{ flex: 1 }} onClick={() => exportCSV()}>↓ CSV</button>
+                  <button className="btn" style={{ flex: 1 }} onClick={() => exportTXT()}>↓ TXT</button>
                 </div>
 
                 <div className="section-label">Import</div>
-                <label className="btn" style={{ cursor: "pointer", textAlign: "center", display: "block" }}>
-                  ↑ Import JSON
-                  <input type="file" accept=".json" hidden onChange={e => { if (e.target.files[0]) { importJSON(e.target.files[0]); e.target.value = ""; } }}/>
-                </label>
-                <div style={{ fontSize: 10, color: "var(--muted)", lineHeight: 1.5 }}>Merges with current map. Imported nodes are placed beside existing ones if they overlap.</div>
+                <div className="btn-row">
+                  <label className="btn" style={{ flex: 1, cursor: "pointer", textAlign: "center" }}>
+                    ↑ JSON
+                    <input type="file" accept=".json" hidden onChange={e => { if (e.target.files[0]) { importJSON(e.target.files[0]); e.target.value = ""; } }}/>
+                  </label>
+                  <label className="btn" style={{ flex: 1, cursor: "pointer", textAlign: "center" }}>
+                    ↑ TXT
+                    <input type="file" accept=".txt" hidden onChange={e => { if (e.target.files[0]) { importTXT(e.target.files[0]); e.target.value = ""; } }}/>
+                  </label>
+                </div>
+                <div style={{ fontSize: 10, color: "var(--muted)", lineHeight: 1.5 }}>Merges with current map. Imported nodes are placed beside existing ones.</div>
 
               </>
             )}
@@ -1474,6 +1618,18 @@ export default function MindMap() {
                       <span className="shortcut-desc">{d}</span>
                     </div>
                   ))}
+                </div>
+
+                <div className="section-label">Notes (.txt) format</div>
+                <div className="help-tip" style={{ marginBottom: 6 }}>
+                  Each node starts with a <b>`</b> (backtick) line. Body text follows. Connections start with <b>=</b>. Two blank lines between nodes.
+                </div>
+                <div className="prompt-card">
+                  <pre>{"`Node Name\nBody text (optional,\ncan span lines)\n= relation, path label : Other Node\n= : Node With No Labels\n\n\n`Second Node\nNo body or connections"}</pre>
+                </div>
+                <div className="help-tip" style={{ marginTop: 6 }}>
+                  Connection format: <b>= relation type, path name : Other Node</b><br/>
+                  Omit either part if not needed — <b>= rel : Name</b> or <b>= , label : Name</b> or <b>= : Name</b>
                 </div>
 
                 <div className="section-label">Use with AI</div>

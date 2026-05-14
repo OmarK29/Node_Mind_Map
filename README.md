@@ -64,8 +64,9 @@ Some uses: brainstorming, planning, flowing a debate, annotating a paper.
 | Drag canvas | Pan |
 
 ### Export & Import
-- Export whole map or just the current selection as **JSON** or **CSV**
-- Import JSON — merges with current map, shifts imported group if it overlaps existing nodes
+- Export whole map or selection as **JSON**, **CSV**, or **TXT** (plain-text notes format)
+- Import **JSON** or **TXT** — both merge with the current map, shifting new nodes to avoid overlap
+- After creating a node, focus jumps to the Name field automatically — press **Enter** to move to the body
 
 ### History
 - 60-step undo/redo
@@ -75,6 +76,23 @@ Some uses: brainstorming, planning, flowing a debate, annotating a paper.
 - Slide-out sidebar drawer
 - Larger port tap targets
 - RAF-throttled touch handler to prevent white-screen on repeated moves
+
+### TXT format
+
+Each node starts with a backtick line. Body follows. Connections start with `=`. Two blank lines between nodes.
+
+```
+`Node Name
+Body text (optional, can span multiple lines)
+= relation type, path label : Other Node
+= : Node With No Labels
+
+
+`Second Node
+```
+
+Connection line: `= relation type, path label : Other Node Name`  
+Omit either part: `= rel : Name` or `= , label : Name` or `= : Name` are all valid.
 
 ---
 
