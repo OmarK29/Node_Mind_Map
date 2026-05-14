@@ -496,7 +496,7 @@ export default function MindMap() {
         expNodes = nodes.filter(n => ids.has(n.id));
       }
     }
-    const sorted = [...expNodes].sort((a, b) => a.y - b.y || a.x - b.x);
+    const sorted = [...expNodes].sort((a, b) => (a.x + a.y) - (b.x + b.y));
     const blocks = sorted.map(n => {
       const lines = [`\`${n.name}`];
       if (n.body?.trim()) lines.push(n.body.trim());
@@ -536,11 +536,15 @@ export default function MindMap() {
           }
           parsedNodes.push({ name, body: bodyLines.join("\n").trim() });
           for (const line of connLines) {
-            const afterEq = line.slice(1).trim();
-            const ci = afterEq.lastIndexOf(" : ");
-            if (ci === -1) continue;
-            const leftPart = afterEq.slice(0, ci).trim();
-            const toName = afterEq.slice(ci + 3).trim();
+            const afterEq = line.slice(1).trim(); // e.g. "parent, label : Node B" or ": Node B"
+            let leftPart = "", toName = "";
+            const ci = afterEq.indexOf(" : ");
+            if (ci !== -1) {
+              leftPart = afterEq.slice(0, ci).trim();
+              toName = afterEq.slice(ci + 3).trim();
+            } else if (afterEq.startsWith(": ")) {
+              toName = afterEq.slice(2).trim();
+            } else { continue; }
             if (!toName) continue;
             let relType = "", relLabel = "";
             if (leftPart.includes(",")) {
@@ -571,8 +575,10 @@ export default function MindMap() {
         const newEdges = [];
         const edgeSet = new Set();
         const edgeById = {};
+        const allNodesByName = { ...nameToNode };
+        for (const n of curNodes) allNodesByName[n.name] = allNodesByName[n.name] ?? n;
         for (const conn of allConns) {
-          const from = nameToNode[conn.fromName], to = nameToNode[conn.toName];
+          const from = nameToNode[conn.fromName], to = allNodesByName[conn.toName];
           if (!from || !to) continue;
           const key = [from.id, to.id].sort().join("--") + (conn.relLabel ? `--${conn.relLabel}` : "");
           if (edgeSet.has(key)) {
