@@ -347,9 +347,10 @@ export default function MindMap() {
     : 0;
 
   // ── History ──────────────────────────────────────────────────────────────────
-  const pushHistory = useCallback((newNodes, newEdges, bg) => {
+  const pushHistory = useCallback((newNodes, newEdges, bg, settingsSnap) => {
     const entry = { nodes: newNodes, edges: newEdges };
     if (bg !== undefined) entry.background = bg;
+    if (settingsSnap !== undefined) entry.settings = settingsSnap;
     hist.current = [...hist.current.slice(0, histIdx.current + 1), entry];
     if (hist.current.length > 60) hist.current = hist.current.slice(-60);
     histIdx.current = hist.current.length - 1;
@@ -363,6 +364,7 @@ export default function MindMap() {
     const s = hist.current[histIdx.current];
     setNodes(s.nodes); setEdges(s.edges);
     if (s.background !== undefined) setBackground(s.background);
+    if (s.settings !== undefined) setSettings(s.settings);
     setHistVer(v => v + 1);
   }, []);
 
@@ -372,6 +374,7 @@ export default function MindMap() {
     const s = hist.current[histIdx.current];
     setNodes(s.nodes); setEdges(s.edges);
     if (s.background !== undefined) setBackground(s.background);
+    if (s.settings !== undefined) setSettings(s.settings);
     setHistVer(v => v + 1);
   }, []);
 
@@ -491,13 +494,20 @@ export default function MindMap() {
         setNodes(newNodes);
         setEdges(mergedEdges);
         setSelected(null);
-        if (data.background) {
-          // Stamp the pre-import background onto the current history entry so undo restores it
+        const importBg = data.background || undefined;
+        const importSettings = data.settings || undefined;
+        if (importBg || importSettings) {
+          // Stamp pre-import state onto current history entry so a single undo reverts everything
           if (hist.current[histIdx.current]) {
-            hist.current[histIdx.current] = { ...hist.current[histIdx.current], background: backgroundRef.current };
+            hist.current[histIdx.current] = {
+              ...hist.current[histIdx.current],
+              ...(importBg ? { background: backgroundRef.current } : {}),
+              ...(importSettings ? { settings: settingsRef.current } : {}),
+            };
           }
-          setBackground(data.background);
-          pushHistRef.current(newNodes, mergedEdges, data.background);
+          if (importBg) setBackground(importBg);
+          if (importSettings) setSettings(importSettings);
+          pushHistRef.current(newNodes, mergedEdges, importBg, importSettings);
         } else {
           pushHistRef.current(newNodes, mergedEdges);
         }
