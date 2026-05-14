@@ -1251,13 +1251,13 @@ export default function MindMap() {
               const _nameColor = n.nameColor || (isHdr ? settings.header.nameColor || undefined : settings.node.nameColor || undefined);
               const _bodySize = n.bodySize ?? settings.node.bodySize;
               const _bodyColor = n.bodyColor || settings.node.bodyColor || undefined;
-              const _maxWidth = n.maxWidth ?? settings.node.maxWidth;
+              const _width = n.maxWidth ?? settings.node.maxWidth;
               return (
                 <div
                   key={n.id}
                   data-node-id={n.id}
                   className={`node${selected?.id === n.id ? " selected" : ""}${multiSelected.includes(n.id) ? " multi-selected" : ""}${dragging?.nodeId === n.id ? " dragging" : ""}${isHdr ? " header-node" : ""}${connFrom?.nodeId === n.id ? " conn-source" : ""}`}
-                  style={{ left: n.x, top: n.y, maxWidth: _maxWidth }}
+                  style={{ left: n.x, top: n.y, width: _width }}
                   ref={el => { if (el) nodeRefs.current[n.id] = el; }}
                   onMouseDown={e => onNodeMouseDown(e, n.id)}
                   onClick={e => onNodeClick(e, n.id)}
@@ -1425,8 +1425,8 @@ export default function MindMap() {
                       </div>
                     )}
                     <div className="field">
-                      <label>Max width (px)</label>
-                      <input type="number" min="100" max="800" placeholder={settings.node.maxWidth} value={selectedNode.maxWidth ?? ""} onChange={e => updateNode(selectedNode.id, "maxWidth", e.target.value === "" ? null : Number(e.target.value))}/>
+                      <label>Width (px)</label>
+                      <input type="number" min="100" placeholder={settings.node.maxWidth} value={selectedNode.maxWidth ?? ""} onChange={e => updateNode(selectedNode.id, "maxWidth", e.target.value === "" ? null : Number(e.target.value))}/>
                     </div>
                   </>
                 )}
@@ -1740,8 +1740,8 @@ export default function MindMap() {
                       </div>
                     </div>
                     <div className="field">
-                      <label>Max node width (px)</label>
-                      <input type="number" min="100" max="800" value={settings.node.maxWidth} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, maxWidth: Number(e.target.value) } }))}/>
+                      <label>Node width (px)</label>
+                      <input type="number" min="100" value={settings.node.maxWidth} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, maxWidth: Number(e.target.value) } }))}/>
                     </div>
                     <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2, marginTop: 4 }}>Edges / paths</div>
                     <div style={{ display: "flex", gap: 8 }}>
