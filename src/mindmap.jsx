@@ -212,6 +212,7 @@ const DEFAULT_SETTINGS = {
   header: { nameSize: 12, nameColor: "" },
   node: { nameSize: 12, nameColor: "", bodySize: 11, bodyColor: "", maxWidth: 280 },
   edge: { color: "", width: 1.5, style: "solid", labelSize: 10, labelWidth: 72 },
+  layout: { minGapX: 40, minGapY: 40 },
 };
 
 let _seq = 0;
@@ -1100,6 +1101,40 @@ export default function MindMap() {
     pushHistory(nodesRef.current, ne);
   }, [selected, pushHistory]);
 
+  const autoSort = useCallback(() => {
+    const curNodes = nodesRef.current;
+    if (curNodes.length === 0) return;
+    const gapX = settingsRef.current.layout?.minGapX ?? 40;
+    const gapY = settingsRef.current.layout?.minGapY ?? 40;
+    const cellW = Math.max(...curNodes.map(n => n.w || 180)) + gapX;
+    const cellH = Math.max(...curNodes.map(n => n.h || 44)) + gapY;
+    const occupied = new Set();
+    const assignments = new Map();
+    // Process in diagonal order so nodes keep their relative positions
+    const sorted = [...curNodes].sort((a, b) => (a.x + a.y) - (b.x + b.y));
+    for (const n of sorted) {
+      const baseCol = Math.round(n.x / cellW);
+      const baseRow = Math.round(n.y / cellH);
+      let placed = false;
+      for (let radius = 0; radius <= 30 && !placed; radius++) {
+        for (let dc = -radius; dc <= radius && !placed; dc++) {
+          for (let dr = -radius; dr <= radius && !placed; dr++) {
+            if (Math.max(Math.abs(dc), Math.abs(dr)) !== radius) continue;
+            const key = `${baseCol + dc},${baseRow + dr}`;
+            if (!occupied.has(key)) {
+              occupied.add(key);
+              assignments.set(n.id, { x: (baseCol + dc) * cellW, y: (baseRow + dr) * cellH });
+              placed = true;
+            }
+          }
+        }
+      }
+    }
+    const newNodes = curNodes.map(n => { const p = assignments.get(n.id); return p ? { ...n, ...p } : n; });
+    setNodes(newNodes);
+    pushHistRef.current(newNodes, edgesRef.current);
+  }, []);
+
   const updateNode = (id, field, val) => {
     setNodes(p => p.map(n => n.id === id ? { ...n, [field]: val } : n));
     deferCommit();
@@ -1786,6 +1821,19 @@ export default function MindMap() {
                     <button className="btn" style={{ fontSize: 10 }} onClick={() => setSettings({ ...DEFAULT_SETTINGS })}>↺ Reset to defaults</button>
                   </>
                 )}
+
+                <div className="section-label">Layout</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Min gap X (px)</label>
+                    <input type="number" min="0" value={settings.layout?.minGapX ?? 40} onChange={e => setSettings(s => ({ ...s, layout: { ...DEFAULT_SETTINGS.layout, ...s.layout, minGapX: Number(e.target.value) } }))}/>
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label>Min gap Y (px)</label>
+                    <input type="number" min="0" value={settings.layout?.minGapY ?? 40} onChange={e => setSettings(s => ({ ...s, layout: { ...DEFAULT_SETTINGS.layout, ...s.layout, minGapY: Number(e.target.value) } }))}/>
+                  </div>
+                </div>
+                <button className="btn" style={{ width: "100%" }} onClick={autoSort}>⊞ Auto sort</button>
 
                 <div className="section-label">Background</div>
                 <div className="field">
