@@ -308,6 +308,9 @@ export default function MindMap() {
   const [hasClipboard, setHasClipboard] = useState(false);
   const [renamingMapId, setRenamingMapId] = useState(null);
   const [lastDeletedMapInfo, setLastDeletedMapInfo] = useState(null);
+  const [styleDefaultsOpen, setStyleDefaultsOpen] = useState(false);
+  const [nodeStyleOpen, setNodeStyleOpen] = useState(false);
+  const [edgeStyleOpen, setEdgeStyleOpen] = useState(false);
 
   // History
   const hist = useRef([{ nodes: _i.nodes, edges: _i.edges }]);
@@ -345,8 +348,10 @@ export default function MindMap() {
     : 0;
 
   // ── History ──────────────────────────────────────────────────────────────────
-  const pushHistory = useCallback((newNodes, newEdges) => {
-    hist.current = [...hist.current.slice(0, histIdx.current + 1), { nodes: newNodes, edges: newEdges }];
+  const pushHistory = useCallback((newNodes, newEdges, bg) => {
+    const entry = { nodes: newNodes, edges: newEdges };
+    if (bg !== undefined) entry.background = bg;
+    hist.current = [...hist.current.slice(0, histIdx.current + 1), entry];
     if (hist.current.length > 60) hist.current = hist.current.slice(-60);
     histIdx.current = hist.current.length - 1;
     setHistVer(v => v + 1);
@@ -358,6 +363,7 @@ export default function MindMap() {
     histIdx.current--;
     const s = hist.current[histIdx.current];
     setNodes(s.nodes); setEdges(s.edges);
+    if (s.background !== undefined) setBackground(s.background);
     setHistVer(v => v + 1);
   }, []);
 
@@ -366,6 +372,7 @@ export default function MindMap() {
     histIdx.current++;
     const s = hist.current[histIdx.current];
     setNodes(s.nodes); setEdges(s.edges);
+    if (s.background !== undefined) setBackground(s.background);
     setHistVer(v => v + 1);
   }, []);
 
@@ -485,7 +492,16 @@ export default function MindMap() {
         setNodes(newNodes);
         setEdges(mergedEdges);
         setSelected(null);
-        pushHistRef.current(newNodes, mergedEdges);
+        if (data.background) {
+          // Stamp the pre-import background onto the current history entry so undo restores it
+          if (hist.current[histIdx.current]) {
+            hist.current[histIdx.current] = { ...hist.current[histIdx.current], background: backgroundRef.current };
+          }
+          setBackground(data.background);
+          pushHistRef.current(newNodes, mergedEdges, data.background);
+        } else {
+          pushHistRef.current(newNodes, mergedEdges);
+        }
       } catch { alert("Invalid file — expected a mindmap JSON export."); }
     };
     reader.readAsText(file);
@@ -1381,34 +1397,40 @@ export default function MindMap() {
                   ))}
                 </div>
 
-                <div className="section-label">Style overrides</div>
-                <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 4 }}>Leave blank to use map defaults.</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Name size (px)</label>
-                    <input type="number" min="8" max="40" placeholder={isHeader(selectedNode) ? settings.header.nameSize : settings.node.nameSize} value={selectedNode.nameSize ?? ""} onChange={e => updateNode(selectedNode.id, "nameSize", e.target.value === "" ? null : Number(e.target.value))}/>
-                  </div>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Name color</label>
-                    <input placeholder="inherit" value={selectedNode.nameColor || ""} onChange={e => updateNode(selectedNode.id, "nameColor", e.target.value)}/>
-                  </div>
+                <div className="section-label" style={{ cursor: "pointer", userSelect: "none", display: "flex", justifyContent: "space-between" }} onClick={() => setNodeStyleOpen(o => !o)}>
+                  Style overrides <span style={{ opacity: 0.6 }}>{nodeStyleOpen ? "▲" : "▼"}</span>
                 </div>
-                {!isHeader(selectedNode) && (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <div className="field" style={{ flex: 1 }}>
-                      <label>Body size (px)</label>
-                      <input type="number" min="8" max="40" placeholder={settings.node.bodySize} value={selectedNode.bodySize ?? ""} onChange={e => updateNode(selectedNode.id, "bodySize", e.target.value === "" ? null : Number(e.target.value))}/>
+                {nodeStyleOpen && (
+                  <>
+                    <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 4 }}>Leave blank to use map defaults.</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Name size (px)</label>
+                        <input type="number" min="8" max="40" placeholder={isHeader(selectedNode) ? settings.header.nameSize : settings.node.nameSize} value={selectedNode.nameSize ?? ""} onChange={e => updateNode(selectedNode.id, "nameSize", e.target.value === "" ? null : Number(e.target.value))}/>
+                      </div>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Name color</label>
+                        <input placeholder="inherit" value={selectedNode.nameColor || ""} onChange={e => updateNode(selectedNode.id, "nameColor", e.target.value)}/>
+                      </div>
                     </div>
-                    <div className="field" style={{ flex: 1 }}>
-                      <label>Body color</label>
-                      <input placeholder="inherit" value={selectedNode.bodyColor || ""} onChange={e => updateNode(selectedNode.id, "bodyColor", e.target.value)}/>
+                    {!isHeader(selectedNode) && (
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <div className="field" style={{ flex: 1 }}>
+                          <label>Body size (px)</label>
+                          <input type="number" min="8" max="40" placeholder={settings.node.bodySize} value={selectedNode.bodySize ?? ""} onChange={e => updateNode(selectedNode.id, "bodySize", e.target.value === "" ? null : Number(e.target.value))}/>
+                        </div>
+                        <div className="field" style={{ flex: 1 }}>
+                          <label>Body color</label>
+                          <input placeholder="inherit" value={selectedNode.bodyColor || ""} onChange={e => updateNode(selectedNode.id, "bodyColor", e.target.value)}/>
+                        </div>
+                      </div>
+                    )}
+                    <div className="field">
+                      <label>Max width (px)</label>
+                      <input type="number" min="100" max="800" placeholder={settings.node.maxWidth} value={selectedNode.maxWidth ?? ""} onChange={e => updateNode(selectedNode.id, "maxWidth", e.target.value === "" ? null : Number(e.target.value))}/>
                     </div>
-                  </div>
+                  </>
                 )}
-                <div className="field">
-                  <label>Max width (px)</label>
-                  <input type="number" min="100" max="800" placeholder={settings.node.maxWidth} value={selectedNode.maxWidth ?? ""} onChange={e => updateNode(selectedNode.id, "maxWidth", e.target.value === "" ? null : Number(e.target.value))}/>
-                </div>
 
                 <div className="section-label">Connections</div>
                 {nodeEdges.length === 0
@@ -1517,37 +1539,43 @@ export default function MindMap() {
                   <span style={{ color: "var(--accent2)", fontFamily: "var(--mono)" }}>{nodes.find(n => n.id === selectedEdge.tgt)?.name}</span>
                 </div>
 
-                <div className="section-label">Style overrides</div>
-                <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 4 }}>Leave blank to use map defaults.</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Line color</label>
-                    <input placeholder="inherit" value={selectedEdge.lineColor || ""} onChange={e => updateEdge(selectedEdge.id, "lineColor", e.target.value)}/>
-                  </div>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Line width</label>
-                    <input type="number" min="0.5" max="10" step="0.5" placeholder={settings.edge.width} value={selectedEdge.lineWidth ?? ""} onChange={e => updateEdge(selectedEdge.id, "lineWidth", e.target.value === "" ? null : Number(e.target.value))}/>
-                  </div>
+                <div className="section-label" style={{ cursor: "pointer", userSelect: "none", display: "flex", justifyContent: "space-between" }} onClick={() => setEdgeStyleOpen(o => !o)}>
+                  Style overrides <span style={{ opacity: 0.6 }}>{edgeStyleOpen ? "▲" : "▼"}</span>
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Line style</label>
-                    <select value={selectedEdge.lineStyle || ""} onChange={e => updateEdge(selectedEdge.id, "lineStyle", e.target.value || null)}>
-                      <option value="">— map default —</option>
-                      <option value="solid">Solid</option>
-                      <option value="dashed">Dashed</option>
-                      <option value="dotted">Dotted</option>
-                    </select>
-                  </div>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Label size (px)</label>
-                    <input type="number" min="7" max="24" placeholder={settings.edge.labelSize} value={selectedEdge.labelSize ?? ""} onChange={e => updateEdge(selectedEdge.id, "labelSize", e.target.value === "" ? null : Number(e.target.value))}/>
-                  </div>
-                </div>
-                <div className="field">
-                  <label>Label width (px)</label>
-                  <input type="number" min="40" max="300" placeholder={settings.edge.labelWidth} value={selectedEdge.labelWidth ?? ""} onChange={e => updateEdge(selectedEdge.id, "labelWidth", e.target.value === "" ? null : Number(e.target.value))}/>
-                </div>
+                {edgeStyleOpen && (
+                  <>
+                    <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 4 }}>Leave blank to use map defaults.</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Line color</label>
+                        <input placeholder="inherit" value={selectedEdge.lineColor || ""} onChange={e => updateEdge(selectedEdge.id, "lineColor", e.target.value)}/>
+                      </div>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Line width</label>
+                        <input type="number" min="0.5" max="10" step="0.5" placeholder={settings.edge.width} value={selectedEdge.lineWidth ?? ""} onChange={e => updateEdge(selectedEdge.id, "lineWidth", e.target.value === "" ? null : Number(e.target.value))}/>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Line style</label>
+                        <select value={selectedEdge.lineStyle || ""} onChange={e => updateEdge(selectedEdge.id, "lineStyle", e.target.value || null)}>
+                          <option value="">— map default —</option>
+                          <option value="solid">Solid</option>
+                          <option value="dashed">Dashed</option>
+                          <option value="dotted">Dotted</option>
+                        </select>
+                      </div>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Label size (px)</label>
+                        <input type="number" min="7" max="24" placeholder={settings.edge.labelSize} value={selectedEdge.labelSize ?? ""} onChange={e => updateEdge(selectedEdge.id, "labelSize", e.target.value === "" ? null : Number(e.target.value))}/>
+                      </div>
+                    </div>
+                    <div className="field">
+                      <label>Label width (px)</label>
+                      <input type="number" min="40" max="300" placeholder={settings.edge.labelWidth} value={selectedEdge.labelWidth ?? ""} onChange={e => updateEdge(selectedEdge.id, "labelWidth", e.target.value === "" ? null : Number(e.target.value))}/>
+                    </div>
+                  </>
+                )}
               </>
             )}
 
@@ -1675,73 +1703,79 @@ export default function MindMap() {
                   </div>
                 )}
 
-                <div className="section-label">Style defaults</div>
-                <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}>Header nodes (no body)</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Name size (px)</label>
-                    <input type="number" min="8" max="40" value={settings.header.nameSize} onChange={e => setSettings(s => ({ ...s, header: { ...s.header, nameSize: Number(e.target.value) } }))}/>
-                  </div>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Name color</label>
-                    <input placeholder="default" value={settings.header.nameColor} onChange={e => setSettings(s => ({ ...s, header: { ...s.header, nameColor: e.target.value } }))}/>
-                  </div>
+                <div className="section-label" style={{ cursor: "pointer", userSelect: "none", display: "flex", justifyContent: "space-between" }} onClick={() => setStyleDefaultsOpen(o => !o)}>
+                  Style defaults <span style={{ opacity: 0.6 }}>{styleDefaultsOpen ? "▲" : "▼"}</span>
                 </div>
-                <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2, marginTop: 4 }}>Body nodes</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Name size (px)</label>
-                    <input type="number" min="8" max="40" value={settings.node.nameSize} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, nameSize: Number(e.target.value) } }))}/>
-                  </div>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Name color</label>
-                    <input placeholder="default" value={settings.node.nameColor} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, nameColor: e.target.value } }))}/>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Body size (px)</label>
-                    <input type="number" min="8" max="40" value={settings.node.bodySize} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, bodySize: Number(e.target.value) } }))}/>
-                  </div>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Body color</label>
-                    <input placeholder="default" value={settings.node.bodyColor} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, bodyColor: e.target.value } }))}/>
-                  </div>
-                </div>
-                <div className="field">
-                  <label>Max node width (px)</label>
-                  <input type="number" min="100" max="800" value={settings.node.maxWidth} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, maxWidth: Number(e.target.value) } }))}/>
-                </div>
-                <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2, marginTop: 4 }}>Edges / paths</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Line color</label>
-                    <input placeholder="default" value={settings.edge.color} onChange={e => setSettings(s => ({ ...s, edge: { ...s.edge, color: e.target.value } }))}/>
-                  </div>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Line width</label>
-                    <input type="number" min="0.5" max="10" step="0.5" value={settings.edge.width} onChange={e => setSettings(s => ({ ...s, edge: { ...s.edge, width: Number(e.target.value) } }))}/>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Line style</label>
-                    <select value={settings.edge.style} onChange={e => setSettings(s => ({ ...s, edge: { ...s.edge, style: e.target.value } }))}>
-                      <option value="solid">Solid</option>
-                      <option value="dashed">Dashed</option>
-                      <option value="dotted">Dotted</option>
-                    </select>
-                  </div>
-                  <div className="field" style={{ flex: 1 }}>
-                    <label>Label size (px)</label>
-                    <input type="number" min="7" max="24" value={settings.edge.labelSize} onChange={e => setSettings(s => ({ ...s, edge: { ...s.edge, labelSize: Number(e.target.value) } }))}/>
-                  </div>
-                </div>
-                <div className="field">
-                  <label>Label width (px)</label>
-                  <input type="number" min="40" max="300" value={settings.edge.labelWidth} onChange={e => setSettings(s => ({ ...s, edge: { ...s.edge, labelWidth: Number(e.target.value) } }))}/>
-                </div>
-                <button className="btn" style={{ fontSize: 10 }} onClick={() => setSettings({ ...DEFAULT_SETTINGS })}>↺ Reset to defaults</button>
+                {styleDefaultsOpen && (
+                  <>
+                    <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}>Header nodes (no body)</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Name size (px)</label>
+                        <input type="number" min="8" max="40" value={settings.header.nameSize} onChange={e => setSettings(s => ({ ...s, header: { ...s.header, nameSize: Number(e.target.value) } }))}/>
+                      </div>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Name color</label>
+                        <input placeholder="default" value={settings.header.nameColor} onChange={e => setSettings(s => ({ ...s, header: { ...s.header, nameColor: e.target.value } }))}/>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2, marginTop: 4 }}>Body nodes</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Name size (px)</label>
+                        <input type="number" min="8" max="40" value={settings.node.nameSize} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, nameSize: Number(e.target.value) } }))}/>
+                      </div>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Name color</label>
+                        <input placeholder="default" value={settings.node.nameColor} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, nameColor: e.target.value } }))}/>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Body size (px)</label>
+                        <input type="number" min="8" max="40" value={settings.node.bodySize} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, bodySize: Number(e.target.value) } }))}/>
+                      </div>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Body color</label>
+                        <input placeholder="default" value={settings.node.bodyColor} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, bodyColor: e.target.value } }))}/>
+                      </div>
+                    </div>
+                    <div className="field">
+                      <label>Max node width (px)</label>
+                      <input type="number" min="100" max="800" value={settings.node.maxWidth} onChange={e => setSettings(s => ({ ...s, node: { ...s.node, maxWidth: Number(e.target.value) } }))}/>
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2, marginTop: 4 }}>Edges / paths</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Line color</label>
+                        <input placeholder="default" value={settings.edge.color} onChange={e => setSettings(s => ({ ...s, edge: { ...s.edge, color: e.target.value } }))}/>
+                      </div>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Line width</label>
+                        <input type="number" min="0.5" max="10" step="0.5" value={settings.edge.width} onChange={e => setSettings(s => ({ ...s, edge: { ...s.edge, width: Number(e.target.value) } }))}/>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Line style</label>
+                        <select value={settings.edge.style} onChange={e => setSettings(s => ({ ...s, edge: { ...s.edge, style: e.target.value } }))}>
+                          <option value="solid">Solid</option>
+                          <option value="dashed">Dashed</option>
+                          <option value="dotted">Dotted</option>
+                        </select>
+                      </div>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label>Label size (px)</label>
+                        <input type="number" min="7" max="24" value={settings.edge.labelSize} onChange={e => setSettings(s => ({ ...s, edge: { ...s.edge, labelSize: Number(e.target.value) } }))}/>
+                      </div>
+                    </div>
+                    <div className="field">
+                      <label>Label width (px)</label>
+                      <input type="number" min="40" max="300" value={settings.edge.labelWidth} onChange={e => setSettings(s => ({ ...s, edge: { ...s.edge, labelWidth: Number(e.target.value) } }))}/>
+                    </div>
+                    <button className="btn" style={{ fontSize: 10 }} onClick={() => setSettings({ ...DEFAULT_SETTINGS })}>↺ Reset to defaults</button>
+                  </>
+                )}
 
                 <div className="section-label">Background</div>
                 <div className="field">
