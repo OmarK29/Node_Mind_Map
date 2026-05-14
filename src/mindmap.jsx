@@ -1631,7 +1631,7 @@ export default function MindMap() {
                   Each node starts with a <b>`</b> (backtick) line. Body text follows. Connections start with <b>=</b>. Two blank lines between nodes.
                 </div>
                 <div className="prompt-card">
-                  <pre>{"`Node Name\nBody text (optional,\ncan span lines)\n= relation, path label : Other Node\n= : Node With No Labels\n\n\n`Second Node\nNo body or connections"}</pre>
+                  <pre>{"`Node Name\n Next line for body text (optional,\ncan span lines)\n= relation, path label : Other Node\n\n\n`Second Node\nNo body or connections"}</pre>
                 </div>
                 <div className="help-tip" style={{ marginTop: 6 }}>
                   Connection format: <b>= relation type, path name : Other Node</b><br/>
