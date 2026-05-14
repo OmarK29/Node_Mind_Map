@@ -35,7 +35,6 @@ body { background: #0e0f11; font-family: 'DM Sans', sans-serif; color: #e2e0da; 
 .node {
   position: absolute;
   min-width: 160px;
-  max-width: 280px;
   background: var(--node-header);
   border: 1px solid var(--border);
   border-radius: 6px;
