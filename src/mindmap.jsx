@@ -496,7 +496,7 @@ export default function MindMap() {
         expNodes = nodes.filter(n => ids.has(n.id));
       }
     }
-    const sorted = [...expNodes].sort((a, b) => a.x - b.x || a.y - b.y);
+    const sorted = [...expNodes].sort((a, b) => a.y - b.y || a.x - b.x);
     const blocks = sorted.map(n => {
       const lines = [`\`${n.name}`];
       if (n.body?.trim()) lines.push(n.body.trim());
@@ -563,7 +563,7 @@ export default function MindMap() {
         const startX = curNodes.length > 0 ? Math.max(...curNodes.map(n => n.x + (n.w || 180))) + 80 : 80;
         const nameToNode = {};
         const newNodes = parsedNodes.map((p, i) => {
-          const node = { id: makeNodeId(), name: p.name, body: p.body, x: startX + (i % 4) * 230, y: 80 + Math.floor(i / 4) * 150, w: 180, h: 44, showBody: true, showNeighbors: true };
+          const node = { id: makeNodeId(), name: p.name, body: p.body, x: startX + Math.floor(i / 4) * 230, y: 80 + (i % 4) * 150, w: 180, h: 44, showBody: true, showNeighbors: true };
           nameToNode[p.name] = node;
           return node;
         });

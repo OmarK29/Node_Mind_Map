@@ -65,6 +65,7 @@ Some uses: brainstorming, planning, flowing a debate, annotating a paper.
 
 ### Export & Import
 - Export whole map or selection as **JSON**, **CSV**, or **TXT** (plain-text notes format)
+- TXT export orders nodes top-to-bottom, then left-to-right
 - Import **JSON** or **TXT** — both merge with the current map, shifting new nodes to avoid overlap
 - After creating a node, focus jumps to the Name field automatically — press **Enter** to move to the body
 
