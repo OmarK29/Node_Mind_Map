@@ -298,7 +298,11 @@ export default function MindMap() {
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [addConnInput, setAddConnInput] = useState("");
   const [showDrop, setShowDrop] = useState(false);
-  const [globalShow, setGlobalShow] = useState({ body: true, neighbors: true, neighborPath: false, neighborRel: false, nodeIds: false });
+  const [globalShow, setGlobalShow] = useState(() => {
+    const defaults = { body: true, neighbors: true, neighborPath: false, neighborRel: false, nodeIds: false };
+    try { const s = JSON.parse(localStorage.getItem(STORAGE_KEY)); if (s?.globalShow) return { ...defaults, ...s.globalShow }; } catch {}
+    return defaults;
+  });
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarTab, setSidebarTab] = useState("edit");
@@ -743,8 +747,8 @@ export default function MindMap() {
     const updatedMaps = maps.map(m =>
       m.id === activeMapId ? { ...m, nodes, edges, background, settings } : m
     );
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ maps: updatedMaps, activeMapId }));
-  }, [nodes, edges, background, settings, maps, activeMapId]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ maps: updatedMaps, activeMapId, globalShow }));
+  }, [nodes, edges, background, settings, maps, activeMapId, globalShow]);
 
   useEffect(() => { setAddConnInput(""); setShowDrop(false); }, [selected?.id]);
   useEffect(() => { if (selected) setSidebarTab("edit"); }, [selected]);
@@ -967,8 +971,7 @@ export default function MindMap() {
 
   // ── Canvas / node handlers ────────────────────────────────────────────────────
   function getAbsPortPos(node, port) {
-    const el = nodeRefs.current[node.id];
-    const h = el ? el.offsetHeight : (node.h||60), w = el ? el.offsetWidth : (node.w||200);
+    const h = node.h || 60, w = node.w || 200;
     if (port === "top")    return { x: node.x+w/2, y: node.y };
     if (port === "bottom") return { x: node.x+w/2, y: node.y+h };
     if (port === "left")   return { x: node.x,     y: node.y+h/2 };
