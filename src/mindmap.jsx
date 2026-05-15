@@ -760,17 +760,35 @@ export default function MindMap() {
     }
   }, [selected, sidebarTab]);
 
+  // Async size tracking via ResizeObserver — avoids forced layout on every render
+  const _roRef = useRef(null);
   useEffect(() => {
-    let changed = false;
-    const next = nodes.map(n => {
-      const el = nodeRefs.current[n.id];
-      if (!el) return n;
-      const h = el.offsetHeight, w = el.offsetWidth;
-      if (h !== n.h || w !== n.w) { changed = true; return { ...n, h, w }; }
-      return n;
+    _roRef.current = new ResizeObserver(entries => {
+      const elToEntry = new Map(entries.map(e => [e.target, e]));
+      setNodes(prev => {
+        let changed = false;
+        const next = prev.map(n => {
+          const el = nodeRefs.current[n.id];
+          if (!el) return n;
+          const entry = elToEntry.get(el);
+          if (!entry) return n;
+          const bbs = entry.borderBoxSize?.[0];
+          const h = bbs ? Math.round(bbs.blockSize) : el.offsetHeight;
+          const w = bbs ? Math.round(bbs.inlineSize) : el.offsetWidth;
+          if (h !== n.h || w !== n.w) { changed = true; return { ...n, h, w }; }
+          return n;
+        });
+        return changed ? next : prev;
+      });
     });
-    if (changed) setNodes(next);
-  });
+    return () => _roRef.current?.disconnect();
+  }, []);
+  useEffect(() => {
+    const ro = _roRef.current;
+    if (!ro) return;
+    ro.disconnect();
+    Object.values(nodeRefs.current).forEach(el => { if (el) ro.observe(el); });
+  }, [nodes.length]);
 
   useEffect(() => {
     const onMove = e => {
