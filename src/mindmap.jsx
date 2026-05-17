@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { supabase } from "./supabase.js";
 
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');`;
 
@@ -312,6 +313,8 @@ export default function MindMap() {
   const [selBox, setSelBox] = useState(null);
   const [hasClipboard, setHasClipboard] = useState(false);
   const [renamingMapId, setRenamingMapId] = useState(null);
+  const [user, setUser] = useState(null);
+  const [syncing, setSyncing] = useState(false);
   const [lastDeletedMapInfo, setLastDeletedMapInfo] = useState(null);
   const [styleDefaultsOpen, setStyleDefaultsOpen] = useState(false);
   const [nodeStyleOpen, setNodeStyleOpen] = useState(false);
@@ -332,6 +335,9 @@ export default function MindMap() {
   const nameInputRef = useRef(null);
   const bodyTextareaRef = useRef(null);
   const pendingFocusId = useRef(null);
+
+  const userRef = useRef(null);
+  const syncTimerRef = useRef(null);
 
   // Stable refs for touch handlers and deferred callbacks
   const mapsRef = useRef(maps);
@@ -742,13 +748,81 @@ export default function MindMap() {
     setLastDeletedMapInfo(null);
   }, [lastDeletedMapInfo]);
 
+  // ── Supabase sync ─────────────────────────────────────────────────────────────
+  const syncUp = useCallback(async (mapsToSync, userId) => {
+    if (!userId) return;
+    setSyncing(true);
+    const rows = mapsToSync.map(m => ({
+      id: m.id, user_id: userId, name: m.name,
+      data: { nodes: m.nodes || [], edges: m.edges || [], background: m.background || DEFAULT_BG, settings: m.settings || DEFAULT_SETTINGS },
+      updated_at: new Date().toISOString(),
+    }));
+    const { error } = await supabase.from("maps").upsert(rows, { onConflict: "id" });
+    if (!error && mapsToSync.length > 0) {
+      await supabase.from("maps").delete().eq("user_id", userId)
+        .not("id", "in", `(${mapsToSync.map(m => m.id).join(",")})`);
+    }
+    if (error) console.error("Sync error:", error);
+    setSyncing(false);
+  }, []);
+
+  const deferSync = useCallback((mapsToSync, userId) => {
+    clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(() => syncUp(mapsToSync, userId), 2000);
+  }, [syncUp]);
+
+  const syncDown = useCallback(async (userId) => {
+    const { data, error } = await supabase.from("maps").select("*").eq("user_id", userId).order("updated_at", { ascending: false });
+    if (error) { console.error(error); return; }
+    if (data?.length) {
+      const remoteMaps = data.map(row => ({ id: row.id, name: row.name, ...row.data }));
+      const active = remoteMaps[0];
+      mapsRef.current = remoteMaps; activeMapIdRef.current = active.id;
+      setMaps(remoteMaps); setActiveMapId(active.id);
+      setNodes(active.nodes?.length ? active.nodes : [DEFAULT_NODE]);
+      setEdges(active.edges || []);
+      setBackground(active.background || { ...DEFAULT_BG });
+      setSettings(active.settings || { ...DEFAULT_SETTINGS });
+      setSelected(null); setMultiSelected([]); setMultiSelectMode(false); setConnFrom(null);
+      hist.current = [{ nodes: active.nodes?.length ? active.nodes : [DEFAULT_NODE], edges: active.edges || [] }];
+      histIdx.current = 0; setHistVer(v => v + 1);
+    } else {
+      syncUp(mapsRef.current, userId);
+    }
+  }, [syncUp]);
+
+  const signIn = useCallback(() => supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: window.location.origin },
+  }), []);
+
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    setUser(null); userRef.current = null;
+  }, []);
+
   // ── Effects ───────────────────────────────────────────────────────────────────
   useEffect(() => {
     const updatedMaps = maps.map(m =>
       m.id === activeMapId ? { ...m, nodes, edges, background, settings } : m
     );
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ maps: updatedMaps, activeMapId, globalShow }));
-  }, [nodes, edges, background, settings, maps, activeMapId, globalShow]);
+    if (userRef.current) deferSync(updatedMaps, userRef.current.id);
+  }, [nodes, edges, background, settings, maps, activeMapId, globalShow, deferSync]);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const u = session?.user ?? null;
+      setUser(u); userRef.current = u;
+      if (u) syncDown(u.id);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const u = session?.user ?? null;
+      setUser(u); userRef.current = u;
+      if (event === "SIGNED_IN") syncDown(u.id);
+    });
+    return () => subscription.unsubscribe();
+  }, [syncDown]);
 
   useEffect(() => { setAddConnInput(""); setShowDrop(false); }, [selected?.id]);
   useEffect(() => { if (selected) setSidebarTab("edit"); }, [selected]);
@@ -1773,6 +1847,20 @@ export default function MindMap() {
                     <button className="btn" style={{ padding: "2px 8px", fontSize: 10, flexShrink: 0 }} onClick={restoreDeletedMap}>Restore</button>
                   </div>
                 )}
+
+                <div className="section-label" style={{ marginTop: 8, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                  {user ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ flex: 1, fontSize: 11, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</span>
+                        {syncing && <span style={{ fontSize: 9, color: "var(--muted)", flexShrink: 0 }}>syncing…</span>}
+                      </div>
+                      <button className="btn" style={{ width: "100%", fontSize: 11 }} onClick={signOut}>Sign out</button>
+                    </div>
+                  ) : (
+                    <button className="btn primary" style={{ width: "100%", fontSize: 11 }} onClick={signIn}>Sign in with Google</button>
+                  )}
+                </div>
 
                 <div className="section-label" style={{ cursor: "pointer", userSelect: "none", display: "flex", justifyContent: "space-between" }} onClick={() => setStyleDefaultsOpen(o => !o)}>
                   Style defaults <span style={{ opacity: 0.6 }}>{styleDefaultsOpen ? "▲" : "▼"}</span>
