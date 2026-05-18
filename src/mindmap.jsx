@@ -776,9 +776,15 @@ export default function MindMap() {
     if (error) { console.error(error); return; }
     if (data?.length) {
       const remoteMaps = data.map(row => ({ id: row.id, name: row.name, ...row.data }));
-      const active = remoteMaps[0];
-      mapsRef.current = remoteMaps; activeMapIdRef.current = active.id;
-      setMaps(remoteMaps); setActiveMapId(active.id);
+      const remoteIds = new Set(remoteMaps.map(m => m.id));
+      const localOnly = mapsRef.current.filter(m =>
+        !remoteIds.has(m.id) &&
+        (m.nodes?.length > 1 || m.edges?.length > 0 || m.name !== "Untitled Map")
+      );
+      const merged = [...remoteMaps, ...localOnly];
+      const active = merged[0];
+      mapsRef.current = merged; activeMapIdRef.current = active.id;
+      setMaps(merged); setActiveMapId(active.id);
       setNodes(active.nodes?.length ? active.nodes : [DEFAULT_NODE]);
       setEdges(active.edges || []);
       setBackground(active.background || { ...DEFAULT_BG });
@@ -786,6 +792,7 @@ export default function MindMap() {
       setSelected(null); setMultiSelected([]); setMultiSelectMode(false); setConnFrom(null);
       hist.current = [{ nodes: active.nodes?.length ? active.nodes : [DEFAULT_NODE], edges: active.edges || [] }];
       histIdx.current = 0; setHistVer(v => v + 1);
+      if (localOnly.length) syncUp(merged, userId);
     } else {
       syncUp(mapsRef.current, userId);
     }
