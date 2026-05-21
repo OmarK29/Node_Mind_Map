@@ -338,6 +338,7 @@ export default function MindMap() {
 
   const userRef = useRef(null);
   const syncTimerRef = useRef(null);
+  const saveTimerRef = useRef(null);
 
   // Stable refs for touch handlers and deferred callbacks
   const mapsRef = useRef(maps);
@@ -813,8 +814,13 @@ export default function MindMap() {
     const updatedMaps = maps.map(m =>
       m.id === activeMapId ? { ...m, nodes, edges, background, settings } : m
     );
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ maps: updatedMaps, activeMapId, globalShow }));
+    const doSave = () => localStorage.setItem(STORAGE_KEY, JSON.stringify({ maps: updatedMaps, activeMapId, globalShow }));
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(doSave, 400);
+    const flush = () => { clearTimeout(saveTimerRef.current); doSave(); };
+    window.addEventListener("beforeunload", flush, { once: true });
     if (userRef.current) deferSync(updatedMaps, userRef.current.id);
+    return () => window.removeEventListener("beforeunload", flush);
   }, [nodes, edges, background, settings, maps, activeMapId, globalShow, deferSync]);
 
   useEffect(() => {
@@ -917,6 +923,7 @@ export default function MindMap() {
       return null;
     }
     function onStart(e) {
+      e.preventDefault();
       if (e.touches.length === 1) {
         const t = e.touches[0];
         const nid = nodeIdFromEl(e.target);
@@ -966,8 +973,8 @@ export default function MindMap() {
       if (drag) setTimeout(() => pushHistRef.current(nodesRef.current, edgesRef.current), 0);
       drag = null; canPan = null; pinch = null;
     }
-    canvas.addEventListener("touchstart", onStart);
-    canvas.addEventListener("touchmove", onMove);
+    canvas.addEventListener("touchstart", onStart, { passive: false });
+    canvas.addEventListener("touchmove", onMove, { passive: false });
     canvas.addEventListener("touchend", onEnd);
     canvas.addEventListener("touchcancel", onEnd);
     return () => {
