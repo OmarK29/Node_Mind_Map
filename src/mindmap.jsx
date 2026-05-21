@@ -291,6 +291,8 @@ export default function MindMap() {
   const [selected, setSelected] = useState(null);
   const [pan, setPan] = useState({ x: 80, y: 60 });
   const [zoom, setZoom] = useState(1);
+  const [zoomText, setZoomText] = useState("100");
+  const zoomFocused = useRef(false);
   const [connFrom, setConnFrom] = useState(null);
   const [mouseCanvas, setMouseCanvas] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(null);
@@ -900,7 +902,10 @@ export default function MindMap() {
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
   useEffect(() => { panRef.current = pan; }, [pan]);
-  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  useEffect(() => {
+    zoomRef.current = zoom;
+    if (!zoomFocused.current) setZoomText(String(Math.round(zoom * 100)));
+  }, [zoom]);
 
   useEffect(() => {
     const handle = () => setIsMobile(window.innerWidth < 768);
@@ -1127,17 +1132,27 @@ export default function MindMap() {
     setIsPanning(false); setPanStart(null); setDragging(null);
   }, [dragging]);
 
+  const zoomTo = useCallback((nz, pivotX, pivotY) => {
+    if (!canvasRef.current) return;
+    nz = Math.min(3, Math.max(0.2, nz));
+    const prev = zoomRef.current;
+    const w = canvasRef.current.clientWidth, h = canvasRef.current.clientHeight;
+    const px = pivotX ?? w / 2, py = pivotY ?? h / 2;
+    const p = panRef.current;
+    setZoom(nz);
+    setPan({ x: px - (px - p.x) * (nz / prev), y: py - (py - p.y) * (nz / prev) });
+  }, []);
+
+  const zoomBy = useCallback((factor, pivotX, pivotY) => {
+    zoomTo(zoomRef.current * factor, pivotX, pivotY);
+  }, [zoomTo]);
+
   const onWheel = useCallback((e) => {
     e.preventDefault();
     const rect = canvasRef.current.getBoundingClientRect();
-    const mx = e.clientX-rect.left, my = e.clientY-rect.top;
-    const factor = e.deltaY > 0 ? 0.9 : 1.1;
-    setZoom(prev => {
-      const nz = Math.min(3, Math.max(0.2, prev*factor));
-      setPan(p => ({ x: mx-(mx-p.x)*(nz/prev), y: my-(my-p.y)*(nz/prev) }));
-      return nz;
-    });
-  }, []);
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    zoomBy(e.deltaY > 0 ? 0.9 : 1.1, mx, my);
+  }, [zoomBy]);
 
   const onNodeMouseDown = useCallback((e, nodeId) => {
     if (connFrom) return;
@@ -1258,15 +1273,6 @@ export default function MindMap() {
     deferCommit();
   };
 
-  const zoomBy = useCallback((factor) => {
-    if (!canvasRef.current) return;
-    const w = canvasRef.current.clientWidth, h = canvasRef.current.clientHeight;
-    setZoom(prev => {
-      const nz = Math.min(3, Math.max(0.2, prev*factor));
-      setPan(p => ({ x: w/2-(w/2-p.x)*(nz/prev), y: h/2-(h/2-p.y)*(nz/prev) }));
-      return nz;
-    });
-  }, []);
 
   const centerView = useCallback(() => {
     if (!nodes.length || !canvasRef.current) return;
@@ -1475,8 +1481,27 @@ export default function MindMap() {
             <div className="tool-sep"/>
             <button className="tool-btn" onClick={addNode}>+ Node</button>
             <div className="tool-sep"/>
-            <button className="tool-btn" onClick={() => zoomBy(1.25)} title="Zoom in">＋</button>
             <button className="tool-btn" onClick={() => zoomBy(1/1.25)} title="Zoom out">－</button>
+            <input
+              type="number" min={20} max={300}
+              value={zoomText}
+              onChange={e => setZoomText(e.target.value)}
+              onFocus={() => { zoomFocused.current = true; }}
+              onBlur={e => {
+                zoomFocused.current = false;
+                const v = parseInt(e.target.value);
+                if (!isNaN(v)) zoomTo(v / 100);
+                else setZoomText(String(Math.round(zoomRef.current * 100)));
+              }}
+              onKeyDown={e => {
+                if (e.key === "Enter") e.target.blur();
+                if (e.key === "Escape") { setZoomText(String(Math.round(zoomRef.current * 100))); e.target.blur(); }
+                e.stopPropagation();
+              }}
+              style={{ width: 42, background: "var(--surface2)", border: "1px solid var(--border2)", borderRadius: 4, color: "var(--text)", fontFamily: "var(--mono)", fontSize: 10, textAlign: "center", padding: "2px 2px", outline: "none" }}
+              title="Zoom %"
+            /><span style={{ fontSize: 10, color: "var(--muted)", alignSelf: "center", paddingRight: 2 }}>%</span>
+            <button className="tool-btn" onClick={() => zoomBy(1.25)} title="Zoom in">＋</button>
             <button className="tool-btn" onClick={centerView} title="Fit to view">⊙</button>
             {multiSelected.length > 1 && (
               <>
