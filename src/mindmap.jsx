@@ -321,6 +321,9 @@ export default function MindMap() {
   const [styleDefaultsOpen, setStyleDefaultsOpen] = useState(false);
   const [nodeStyleOpen, setNodeStyleOpen] = useState(false);
   const [edgeStyleOpen, setEdgeStyleOpen] = useState(false);
+  const [viewOnly, setViewOnly] = useState(false);
+  const [sharedMapName, setSharedMapName] = useState(null);
+  const viewOnlyRef = useRef(false);
 
   // History
   const hist = useRef([{ nodes: _i.nodes, edges: _i.edges }]);
@@ -703,7 +706,7 @@ export default function MindMap() {
       ...prev.map(m => m.id === activeMapIdRef.current
         ? { ...m, nodes: nodesRef.current, edges: edgesRef.current, background: backgroundRef.current, settings: settingsRef.current }
         : m),
-      { id: newId, name: "New Map", nodes: initNodes, edges: [], background: { ...DEFAULT_BG }, settings: { ...DEFAULT_SETTINGS } },
+      { id: newId, name: "New Map", nodes: initNodes, edges: [], background: { ...DEFAULT_BG }, settings: { ...DEFAULT_SETTINGS }, visibility: "private", shareToken: null },
     ]);
     setActiveMapId(newId);
     setNodes(initNodes);
@@ -714,6 +717,29 @@ export default function MindMap() {
     hist.current = [{ nodes: initNodes, edges: [] }];
     histIdx.current = 0;
     setHistVer(v => v + 1);
+  }, []);
+
+  const setMapVisibility = useCallback((vis) => {
+    setMaps(prev => prev.map(m => {
+      if (m.id !== activeMapIdRef.current) return m;
+      const shareToken = vis !== "private" && !m.shareToken
+        ? crypto.randomUUID()
+        : m.shareToken;
+      return { ...m, visibility: vis, shareToken };
+    }));
+  }, []);
+
+  const exitSharedView = useCallback(() => {
+    viewOnlyRef.current = false;
+    setViewOnly(false);
+    setSharedMapName(null);
+    const active = mapsRef.current.find(m => m.id === activeMapIdRef.current) || mapsRef.current[0];
+    if (active) {
+      setNodes(active.nodes?.length ? active.nodes : [DEFAULT_NODE]);
+      setEdges(active.edges || []);
+      setBackground(active.background || { ...DEFAULT_BG });
+      setSettings(active.settings || { ...DEFAULT_SETTINGS });
+    }
   }, []);
 
   const deleteMap = useCallback((mapId) => {
@@ -757,6 +783,8 @@ export default function MindMap() {
     setSyncing(true);
     const rows = mapsToSync.map(m => ({
       id: m.id, user_id: userId, name: m.name,
+      visibility: m.visibility || "private",
+      share_token: m.shareToken || null,
       data: { nodes: m.nodes || [], edges: m.edges || [], background: m.background || DEFAULT_BG, settings: m.settings || DEFAULT_SETTINGS },
       updated_at: new Date().toISOString(),
     }));
@@ -778,7 +806,7 @@ export default function MindMap() {
     const { data, error } = await supabase.from("maps").select("*").eq("user_id", userId).order("updated_at", { ascending: false });
     if (error) { console.error(error); return; }
     if (data?.length) {
-      const remoteMaps = data.map(row => ({ id: row.id, name: row.name, ...row.data }));
+      const remoteMaps = data.map(row => ({ id: row.id, name: row.name, visibility: row.visibility || "private", shareToken: row.share_token || null, ...row.data }));
       const remoteIds = new Set(remoteMaps.map(m => m.id));
       const localOnly = mapsRef.current.filter(m =>
         !remoteIds.has(m.id) &&
@@ -816,6 +844,7 @@ export default function MindMap() {
     const updatedMaps = maps.map(m =>
       m.id === activeMapId ? { ...m, nodes, edges, background, settings } : m
     );
+    if (viewOnlyRef.current) return;
     const doSave = () => localStorage.setItem(STORAGE_KEY, JSON.stringify({ maps: updatedMaps, activeMapId, globalShow }));
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(doSave, 400);
@@ -838,6 +867,24 @@ export default function MindMap() {
     });
     return () => subscription.unsubscribe();
   }, [syncDown]);
+
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("share");
+    if (!token || !supabase) return;
+    supabase.from("maps").select("*").eq("share_token", token).in("visibility", ["link", "public"]).single()
+      .then(({ data, error }) => {
+        if (error || !data) return;
+        const m = { ...data.data };
+        viewOnlyRef.current = true;
+        setViewOnly(true);
+        setSharedMapName(data.name);
+        setNodes(m.nodes?.length ? m.nodes : [DEFAULT_NODE]);
+        setEdges(m.edges || []);
+        setBackground(m.background || { ...DEFAULT_BG });
+        setSettings(m.settings || { ...DEFAULT_SETTINGS });
+        setSelected(null); setMultiSelected([]);
+      });
+  }, []);
 
   useEffect(() => { setAddConnInput(""); setShowDrop(false); }, [selected?.id]);
   useEffect(() => { if (selected) setSidebarTab("edit"); }, [selected]);
@@ -993,6 +1040,7 @@ export default function MindMap() {
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = e => {
+      if (viewOnlyRef.current) return;
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); return; }
@@ -1155,6 +1203,7 @@ export default function MindMap() {
   }, [zoomBy]);
 
   const onNodeMouseDown = useCallback((e, nodeId) => {
+    if (viewOnlyRef.current) return;
     if (connFrom) return;
     e.stopPropagation();
     if (e.shiftKey || multiSelectMode) {
@@ -1335,6 +1384,12 @@ export default function MindMap() {
     <>
       <style>{FONTS}{STYLES}</style>
       <div className="app">
+        {viewOnly && (
+          <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 200, background: "var(--surface)", border: "1px solid var(--border2)", borderRadius: 6, padding: "6px 14px", display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "var(--muted)", pointerEvents: "auto", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}>
+            <span>Viewing <span style={{ color: "var(--text)" }}>{sharedMapName}</span> — read only</span>
+            <button className="btn" style={{ padding: "2px 8px", fontSize: 10 }} onClick={exitSharedView}>✕</button>
+          </div>
+        )}
         <div
           className={`canvas-wrap${isPanning ? " panning" : ""}${connFrom ? " connecting" : ""}`}
           style={{ backgroundColor: background.bgColor || "#0e0f11" }}
@@ -1476,11 +1531,13 @@ export default function MindMap() {
           {isMobile && <button className="sidebar-toggle" onClick={() => setSidebarOpen(o => !o)}>☰</button>}
 
           <div className="toolbar">
-            <button className="tool-btn" onClick={undo} disabled={!canUndo} title="Undo (⌘Z)">⟲</button>
-            <button className="tool-btn" onClick={redo} disabled={!canRedo} title="Redo (⌘⇧Z)">⟳</button>
-            <div className="tool-sep"/>
-            <button className="tool-btn" onClick={addNode}>+ Node</button>
-            <div className="tool-sep"/>
+            {!viewOnly && <>
+              <button className="tool-btn" onClick={undo} disabled={!canUndo} title="Undo (⌘Z)">⟲</button>
+              <button className="tool-btn" onClick={redo} disabled={!canRedo} title="Redo (⌘⇧Z)">⟳</button>
+              <div className="tool-sep"/>
+              <button className="tool-btn" onClick={addNode}>+ Node</button>
+              <div className="tool-sep"/>
+            </>}
             <button className="tool-btn" onClick={() => zoomBy(1/1.25)} title="Zoom out">－</button>
             <input
               type="number" min={20} max={300}
@@ -1906,6 +1963,35 @@ export default function MindMap() {
                     <button className="btn primary" style={{ width: "100%", fontSize: 11 }} onClick={signIn}>Sign in with Google</button>
                   )}
                 </div>
+
+                {(() => {
+                  const activeMap = maps.find(m => m.id === activeMapId);
+                  const vis = activeMap?.visibility || "private";
+                  const token = activeMap?.shareToken;
+                  const shareUrl = token ? `${window.location.origin}?share=${token}` : null;
+                  return (
+                    <>
+                      <div className="section-label">Sharing</div>
+                      {user ? (
+                        <>
+                          <div className="bg-type-row">
+                            {[["private","🔒 Private"],["link","🔗 Link only"],["public","🌐 Public"]].map(([v,label]) => (
+                              <button key={v} className={`bg-type-btn${vis === v ? " active" : ""}`} onClick={() => setMapVisibility(v)}>{label}</button>
+                            ))}
+                          </div>
+                          {vis !== "private" && shareUrl && (
+                            <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                              <input readOnly value={shareUrl} style={{ flex: 1, background: "var(--surface2)", border: "1px solid var(--border2)", borderRadius: 4, color: "var(--muted)", fontSize: 9, padding: "4px 6px", fontFamily: "var(--mono)", minWidth: 0 }} onClick={e => e.target.select()} />
+                              <button className="btn" style={{ padding: "3px 8px", fontSize: 10, flexShrink: 0 }} onClick={() => navigator.clipboard.writeText(shareUrl)}>Copy</button>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div style={{ fontSize: 11, color: "var(--muted)", paddingBottom: 4 }}>Sign in to share maps</div>
+                      )}
+                    </>
+                  );
+                })()}
 
                 <div className="section-label" style={{ cursor: "pointer", userSelect: "none", display: "flex", justifyContent: "space-between" }} onClick={() => setStyleDefaultsOpen(o => !o)}>
                   Style defaults <span style={{ opacity: 0.6 }}>{styleDefaultsOpen ? "▲" : "▼"}</span>
