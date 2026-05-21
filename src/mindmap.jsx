@@ -1270,6 +1270,12 @@ export default function MindMap() {
     setZoom(nz);
     setPan({ x: (ww-(maxX-minX)*nz)/2-minX*nz, y: (wh-(maxY-minY)*nz)/2-minY*nz });
   }, [nodes]);
+  const centerViewRef = useRef(centerView);
+  useEffect(() => { centerViewRef.current = centerView; }, [centerView]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => centerViewRef.current());
+    return () => cancelAnimationFrame(frame);
+  }, [activeMapId]);
 
   const addConnFromInput = useCallback((targetNode) => {
     if (!selectedNode || !targetNode || targetNode.id === selectedNode.id) return;
