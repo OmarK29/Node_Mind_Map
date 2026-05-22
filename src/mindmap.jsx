@@ -224,6 +224,16 @@ function makeNodeId() {
 }
 function makeEdgeId() { return `e_${Date.now()}_${++_seq}`; }
 
+const DELETED_IDS_KEY = "mindmap_deleted_v2";
+function getDeletedIds() {
+  try { return new Set(JSON.parse(localStorage.getItem(DELETED_IDS_KEY)) || []); } catch { return new Set(); }
+}
+function addDeletedId(id) {
+  const ids = getDeletedIds();
+  ids.add(id);
+  localStorage.setItem(DELETED_IDS_KEY, JSON.stringify([...ids]));
+}
+
 const RELATION_PRESETS = [
   { src: "parent", tgt: "child" },
   { src: "higher", tgt: "lower" },
@@ -744,6 +754,12 @@ export default function MindMap() {
 
   const deleteMap = useCallback((mapId) => {
     if (mapsRef.current.length <= 1) return;
+    addDeletedId(mapId);
+    if (userRef.current) {
+      supabase.from("maps").delete().eq("id", mapId).then(({ error }) => {
+        if (error) console.error("Delete error:", error);
+      });
+    }
     const toDelete = mapsRef.current.find(m => m.id === mapId);
     const insertIdx = mapsRef.current.findIndex(m => m.id === mapId);
     const savedMap = mapId === activeMapIdRef.current
@@ -773,26 +789,25 @@ export default function MindMap() {
   const restoreDeletedMap = useCallback(() => {
     if (!lastDeletedMapInfo) return;
     const { map, insertIdx } = lastDeletedMapInfo;
+    const ids = getDeletedIds();
+    ids.delete(map.id);
+    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify([...ids]));
     setMaps(prev => { const next = [...prev]; next.splice(Math.min(insertIdx, next.length), 0, map); return next; });
     setLastDeletedMapInfo(null);
   }, [lastDeletedMapInfo]);
 
   // ── Supabase sync ─────────────────────────────────────────────────────────────
   const syncUp = useCallback(async (mapsToSync, userId) => {
-    if (!userId) return;
+    if (!userId || mapsToSync.length === 0) return;
     setSyncing(true);
     const rows = mapsToSync.map(m => ({
       id: m.id, user_id: userId, name: m.name,
       visibility: m.visibility || "private",
       share_token: m.shareToken || null,
       data: { nodes: m.nodes || [], edges: m.edges || [], background: m.background || DEFAULT_BG, settings: m.settings || DEFAULT_SETTINGS },
-      updated_at: new Date().toISOString(),
+      updated_at: m.updatedAt || new Date().toISOString(),
     }));
     const { error } = await supabase.from("maps").upsert(rows, { onConflict: "id" });
-    if (!error && mapsToSync.length > 0) {
-      await supabase.from("maps").delete().eq("user_id", userId)
-        .not("id", "in", `(${mapsToSync.map(m => m.id).join(",")})`);
-    }
     if (error) console.error("Sync error:", error);
     setSyncing(false);
   }, []);
@@ -803,29 +818,71 @@ export default function MindMap() {
   }, [syncUp]);
 
   const syncDown = useCallback(async (userId) => {
+    setSyncing(true);
     const { data, error } = await supabase.from("maps").select("*").eq("user_id", userId).order("updated_at", { ascending: false });
+    setSyncing(false);
     if (error) { console.error(error); return; }
-    if (data?.length) {
-      const remoteMaps = data.map(row => ({ id: row.id, name: row.name, visibility: row.visibility || "private", shareToken: row.share_token || null, ...row.data }));
+
+    const deletedIds = getDeletedIds();
+
+    // Delete any zombies — maps we deleted locally that came back from remote
+    const zombies = (data || []).filter(row => deletedIds.has(row.id));
+    if (zombies.length > 0) {
+      await Promise.all(zombies.map(row => supabase.from("maps").delete().eq("id", row.id)));
+    }
+
+    const activeRemote = (data || []).filter(row => !deletedIds.has(row.id));
+
+    if (activeRemote.length > 0) {
+      const remoteMaps = activeRemote.map(row => ({
+        id: row.id, name: row.name,
+        visibility: row.visibility || "private",
+        shareToken: row.share_token || null,
+        updatedAt: row.updated_at,
+        ...row.data,
+      }));
+
       const remoteIds = new Set(remoteMaps.map(m => m.id));
+      const localById = new Map(mapsRef.current.map(m => [m.id, m]));
+
+      // Prefer newer version for maps present on both sides
+      const mergedMaps = remoteMaps.map(remote => {
+        const local = localById.get(remote.id);
+        if (!local) return remote;
+        const localTime = local.updatedAt ? new Date(local.updatedAt).getTime() : 0;
+        const remoteTime = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
+        return remoteTime >= localTime ? remote : local;
+      });
+
+      // Keep local-only maps that aren't deleted
       const localOnly = mapsRef.current.filter(m =>
-        !remoteIds.has(m.id) &&
+        !remoteIds.has(m.id) && !deletedIds.has(m.id) &&
         (m.nodes?.length > 1 || m.edges?.length > 0 || m.name !== "Untitled Map")
       );
-      const merged = [...remoteMaps, ...localOnly];
-      const active = merged[0];
-      mapsRef.current = merged; activeMapIdRef.current = active.id;
-      setMaps(merged); setActiveMapId(active.id);
-      setNodes(active.nodes?.length ? active.nodes : [DEFAULT_NODE]);
-      setEdges(active.edges || []);
-      setBackground(active.background || { ...DEFAULT_BG });
-      setSettings(active.settings || { ...DEFAULT_SETTINGS });
+
+      const merged = [...mergedMaps, ...localOnly];
+      if (merged.length === 0) return;
+
+      // Preserve active map if it still exists; else fall back to first
+      const curActiveId = activeMapIdRef.current;
+      const newActive = merged.find(m => m.id === curActiveId) || merged[0];
+
+      mapsRef.current = merged;
+      activeMapIdRef.current = newActive.id;
+      setMaps(merged);
+      setActiveMapId(newActive.id);
+      setNodes(newActive.nodes?.length ? newActive.nodes : [DEFAULT_NODE]);
+      setEdges(newActive.edges || []);
+      setBackground(newActive.background || { ...DEFAULT_BG });
+      setSettings(newActive.settings || { ...DEFAULT_SETTINGS });
       setSelected(null); setMultiSelected([]); setMultiSelectMode(false); setConnFrom(null);
-      hist.current = [{ nodes: active.nodes?.length ? active.nodes : [DEFAULT_NODE], edges: active.edges || [] }];
+      hist.current = [{ nodes: newActive.nodes?.length ? newActive.nodes : [DEFAULT_NODE], edges: newActive.edges || [] }];
       histIdx.current = 0; setHistVer(v => v + 1);
-      if (localOnly.length) syncUp(merged, userId);
+
+      if (localOnly.length) syncUp(localOnly, userId);
     } else {
-      syncUp(mapsRef.current, userId);
+      const toUpload = mapsRef.current.filter(m => !deletedIds.has(m.id));
+      if (toUpload.length) syncUp(toUpload, userId);
     }
   }, [syncUp]);
 
@@ -842,7 +899,7 @@ export default function MindMap() {
   // ── Effects ───────────────────────────────────────────────────────────────────
   useEffect(() => {
     const updatedMaps = maps.map(m =>
-      m.id === activeMapId ? { ...m, nodes, edges, background, settings } : m
+      m.id === activeMapId ? { ...m, nodes, edges, background, settings, updatedAt: new Date().toISOString() } : m
     );
     if (viewOnlyRef.current) return;
     const doSave = () => localStorage.setItem(STORAGE_KEY, JSON.stringify({ maps: updatedMaps, activeMapId, globalShow }));
@@ -866,6 +923,14 @@ export default function MindMap() {
       if (event === "SIGNED_IN") syncDown(u.id);
     });
     return () => subscription.unsubscribe();
+  }, [syncDown]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (!document.hidden && userRef.current) syncDown(userRef.current.id);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [syncDown]);
 
   useEffect(() => {
@@ -1956,7 +2021,10 @@ export default function MindMap() {
                         <span style={{ flex: 1, fontSize: 11, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</span>
                         {syncing && <span style={{ fontSize: 9, color: "var(--muted)", flexShrink: 0 }}>syncing…</span>}
                       </div>
-                      <button className="btn" style={{ width: "100%", fontSize: 11 }} onClick={signOut}>Sign out</button>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button className="btn" style={{ flex: 1, fontSize: 11 }} onClick={() => syncDown(user.id)} disabled={syncing}>↓ Sync now</button>
+                        <button className="btn" style={{ flex: 1, fontSize: 11 }} onClick={signOut}>Sign out</button>
+                      </div>
                     </div>
                   ) : (
                     <button className="btn primary" style={{ width: "100%", fontSize: 11 }} onClick={signIn}>Sign in with Google</button>
