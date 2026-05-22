@@ -975,8 +975,6 @@ export default function MindMap() {
       return null;
     }
     function onStart(e) {
-      if (e.target.closest("button,input,select,textarea,a")) return;
-      e.preventDefault();
       if (e.touches.length === 1) {
         const t = e.touches[0];
         const nid = nodeIdFromEl(e.target);
