@@ -10,6 +10,7 @@ const { mockChain, mockAuth } = vi.hoisted(() => {
   const mockChain = {
     select: vi.fn(),
     eq: vi.fn(),
+    in: vi.fn(),
     order: vi.fn().mockResolvedValue({ data: [], error: null }),
     upsert: vi.fn().mockResolvedValue({ data: null, error: null }),
     delete: vi.fn(),
@@ -19,6 +20,7 @@ const { mockChain, mockAuth } = vi.hoisted(() => {
   // arbitrarily without the test specifying the exact call order.
   mockChain.select.mockReturnValue(mockChain);
   mockChain.eq.mockReturnValue(mockChain);
+  mockChain.in.mockReturnValue(mockChain);
   mockChain.delete.mockReturnValue(mockChain);
 
   const mockAuth = {
@@ -59,17 +61,17 @@ describe("MindMap — initial render", () => {
 
   it("shows the toolbar", () => {
     renderApp();
-    expect(screen.getByText("+Node")).toBeInTheDocument();
+    expect(screen.getByText("+ Node")).toBeInTheDocument();
   });
 
   it("undo button is disabled initially", () => {
     renderApp();
-    expect(screen.getByTitle("Undo")).toBeDisabled();
+    expect(screen.getByTitle(/Undo/)).toBeDisabled();
   });
 
   it("redo button is disabled initially", () => {
     renderApp();
-    expect(screen.getByTitle("Redo")).toBeDisabled();
+    expect(screen.getByTitle(/Redo/)).toBeDisabled();
   });
 });
 
@@ -81,10 +83,10 @@ describe("MindMap — node operations", () => {
     const user = userEvent.setup();
     renderApp();
 
-    await user.click(screen.getByText("+Node"));
+    await user.click(screen.getByText("+ Node"));
 
     await waitFor(() => {
-      expect(screen.getByTitle("Undo")).not.toBeDisabled();
+      expect(screen.getByTitle(/Undo/)).not.toBeDisabled();
     });
   });
 
@@ -92,25 +94,25 @@ describe("MindMap — node operations", () => {
     const user = userEvent.setup();
     renderApp();
 
-    await user.click(screen.getByText("+Node"));
-    await waitFor(() => expect(screen.getByTitle("Undo")).not.toBeDisabled());
+    await user.click(screen.getByText("+ Node"));
+    await waitFor(() => expect(screen.getByTitle(/Undo/)).not.toBeDisabled());
 
-    await user.click(screen.getByTitle("Undo"));
-    await waitFor(() => expect(screen.getByTitle("Undo")).toBeDisabled());
+    await user.click(screen.getByTitle(/Undo/));
+    await waitFor(() => expect(screen.getByTitle(/Undo/)).toBeDisabled());
   });
 
   it("redo re-applies undone action", async () => {
     const user = userEvent.setup();
     renderApp();
 
-    await user.click(screen.getByText("+Node"));
-    await waitFor(() => expect(screen.getByTitle("Undo")).not.toBeDisabled());
+    await user.click(screen.getByText("+ Node"));
+    await waitFor(() => expect(screen.getByTitle(/Undo/)).not.toBeDisabled());
 
-    await user.click(screen.getByTitle("Undo"));
-    await waitFor(() => expect(screen.getByTitle("Redo")).not.toBeDisabled());
+    await user.click(screen.getByTitle(/Undo/));
+    await waitFor(() => expect(screen.getByTitle(/Redo/)).not.toBeDisabled());
 
-    await user.click(screen.getByTitle("Redo"));
-    await waitFor(() => expect(screen.getByTitle("Undo")).not.toBeDisabled());
+    await user.click(screen.getByTitle(/Redo/));
+    await waitFor(() => expect(screen.getByTitle(/Undo/)).not.toBeDisabled());
   });
 });
 
@@ -136,10 +138,10 @@ describe("MindMap — maps tab", () => {
     await user.click(screen.getByText("Maps"));
     await waitFor(() => screen.getByText("My Map"));
 
-    await user.click(screen.getByText("+New Map"));
+    await user.click(screen.getByText("+ New Map"));
 
     await waitFor(() => {
-      expect(screen.getByText("Untitled Map")).toBeInTheDocument();
+      expect(screen.getByText("New Map")).toBeInTheDocument();
     });
   });
 });
@@ -155,7 +157,7 @@ describe("MindMap — auth state", () => {
     await user.click(screen.getByText("Maps"));
 
     await waitFor(() => {
-      expect(screen.getByText(/sign in/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Sign in with Google" })).toBeInTheDocument();
     });
   });
 });
@@ -182,7 +184,7 @@ describe("MindMap — view-only share banner", () => {
     renderApp();
 
     await waitFor(() => {
-      expect(screen.getByText(/view.only/i)).toBeInTheDocument();
+      expect(screen.getByText(/read only/i)).toBeInTheDocument();
     });
   });
 
@@ -202,12 +204,12 @@ describe("MindMap — view-only share banner", () => {
     const user = userEvent.setup();
     renderApp();
 
-    await waitFor(() => screen.getByText(/view.only/i));
+    await waitFor(() => screen.getByText(/read only/i));
 
     await user.click(screen.getByRole("button", { name: "✕" }));
 
     await waitFor(() => {
-      expect(screen.queryByText(/view.only/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/read only/i)).not.toBeInTheDocument();
     });
   });
 });
