@@ -217,6 +217,10 @@ const DEFAULT_SETTINGS = {
 };
 
 let _seq = 0;
+
+// Human-readable IDs with a timestamp + per-session sequence counter.
+// This prevents collisions across concurrent tabs or rapid creation bursts
+// (e.g. import) without requiring UUIDs, while keeping IDs debuggable.
 function makeNodeId() {
   const d = new Date();
   const p = n => String(n).padStart(2, "0");
@@ -224,6 +228,9 @@ function makeNodeId() {
 }
 function makeEdgeId() { return `e_${Date.now()}_${++_seq}`; }
 
+// Tracks map IDs that were deleted on this device so syncDown can evict
+// any "zombie" copies that re-appear from another device's earlier syncUp.
+// Persisted in localStorage so the tombstone survives page reloads.
 const DELETED_IDS_KEY = "mindmap_deleted_v2";
 function getDeletedIds() {
   try { return new Set(JSON.parse(localStorage.getItem(DELETED_IDS_KEY)) || []); } catch { return new Set(); }
@@ -242,6 +249,10 @@ const RELATION_PRESETS = [
   { src: "before", tgt: "after" },
 ];
 
+// Picks the pair of ports that minimises edge crossings by choosing the
+// dominant axis (horizontal vs vertical) based on the centre-to-centre
+// vector. Default dimensions (180×60) are used when the DOM hasn't
+// measured the node yet (first render before ResizeObserver fires).
 function bestPorts(src, tgt) {
   const dx = (tgt.x + (tgt.w||180)/2) - (src.x + (src.w||180)/2);
   const dy = (tgt.y + (tgt.h||60)/2) - (src.y + (src.h||60)/2);
@@ -249,6 +260,9 @@ function bestPorts(src, tgt) {
   return dy >= 0 ? { srcPort:"bottom", tgtPort:"top" } : { srcPort:"top", tgtPort:"bottom" };
 }
 
+// SVG cubic Bézier for edges. Control points are offset by half the
+// horizontal distance, producing smooth S-curves that visually separate
+// overlapping edges without requiring layout-phase geometry.
 function cubicPath(x1, y1, x2, y2) {
   const dx = Math.abs(x2-x1)*0.5;
   return `M ${x1} ${y1} C ${x1+dx} ${y1}, ${x2-dx} ${y2}, ${x2} ${y2}`;
@@ -256,6 +270,9 @@ function cubicPath(x1, y1, x2, y2) {
 
 function makeMapId() { return `map_${Date.now()}_${++_seq}`; }
 
+// Two-key fallback supports in-place schema migration: existing users on
+// v1 (single {nodes,edges} blob) are silently promoted to v2 the first
+// time the app loads, without a separate migration script.
 function loadStored() {
   try {
     const v2 = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -266,6 +283,9 @@ function loadStored() {
 
 const DEFAULT_NODE = { id: "n_default", name: "Central Idea", body: "", x: 300, y: 220, w: 180, h: 44, showBody: true, showNeighbors: true };
 
+// Triggers a file download via a temporary anchor element rather than
+// window.open(), which is blocked as a popup in most browsers unless
+// called from a direct user gesture on the same frame.
 function dlBlob(content, filename, type) {
   const a = Object.assign(document.createElement("a"), {
     href: URL.createObjectURL(new Blob([content], { type })),
@@ -276,7 +296,12 @@ function dlBlob(content, filename, type) {
 }
 
 export default function MindMap() {
-  // One-time initialization from localStorage
+  // One-time initialisation guard. useRef with a null sentinel acts as
+  // lazy state: we read localStorage exactly once regardless of how many
+  // times React renders (including StrictMode's intentional double-invoke).
+  // useState initialisers also run only once, but this pattern lets us
+  // derive several interdependent initial values in one pass before any
+  // state setter is called.
   const _init = useRef(null);
   if (!_init.current) {
     const raw = loadStored();
@@ -355,7 +380,12 @@ export default function MindMap() {
   const syncTimerRef = useRef(null);
   const saveTimerRef = useRef(null);
 
-  // Stable refs for touch handlers and deferred callbacks
+  // Stable refs that mirror React state for use inside event listeners,
+  // setTimeout callbacks, and useCallback closures that cannot safely
+  // list the live state value as a dependency (would cause re-registration
+  // on every render). Each ref is kept in sync by a dedicated effect below.
+  // pushHistRef is a special case: it stores the pushHistory callback so
+  // async callbacks always call the latest version without depending on it.
   const mapsRef = useRef(maps);
   const backgroundRef = useRef(background);
   const settingsRef = useRef(settings);
@@ -377,8 +407,13 @@ export default function MindMap() {
   // ── History ──────────────────────────────────────────────────────────────────
   const pushHistory = useCallback((newNodes, newEdges, bg, settingsSnap) => {
     const entry = { nodes: newNodes, edges: newEdges };
+    // bg and settingsSnap are optional: only imports need to snapshot style
+    // changes so that a single Ctrl+Z reverts both nodes and appearance.
     if (bg !== undefined) entry.background = bg;
     if (settingsSnap !== undefined) entry.settings = settingsSnap;
+    // Slicing at histIdx discards the redo stack on new commit, matching
+    // standard editor behaviour. The 60-entry cap bounds memory — each
+    // entry can hold hundreds of serialised nodes.
     hist.current = [...hist.current.slice(0, histIdx.current + 1), entry];
     if (hist.current.length > 60) hist.current = hist.current.slice(-60);
     histIdx.current = hist.current.length - 1;
@@ -406,6 +441,10 @@ export default function MindMap() {
     setHistVer(v => v + 1);
   }, []);
 
+  // Debounced history push for high-frequency edits (name/body text fields).
+  // Without debouncing, every keystroke creates a history entry, exhausting
+  // the 60-entry cap in seconds and making undo feel granular rather than
+  // semantic. 700 ms groups a continuous typing burst into one entry.
   const commitTimer = useRef(null);
   const deferCommit = useCallback(() => {
     clearTimeout(commitTimer.current);
@@ -479,7 +518,9 @@ export default function MindMap() {
           y: n.y ?? (80 + Math.floor(i / 4) * 150),
         }));
 
-        // Remap any IDs that collide with existing nodes
+        // ID collision remapping: files exported from the same base map share
+        // node IDs. Reassign any that clash with existing nodes and build a
+        // lookup table so edge references can be updated to match.
         const existingIds = new Set(curNodes.map(n => n.id));
         const idMap = {};
         const remapped = normalized.map(n => {
@@ -497,7 +538,9 @@ export default function MindMap() {
           .map(e => ({ ...e, id: makeEdgeId(), src: idMap[e.src] ?? e.src, tgt: idMap[e.tgt] ?? e.tgt }))
           .filter(e => allIds.has(e.src) && allIds.has(e.tgt));
 
-        // Shift imported group right just enough so bounding boxes don't overlap
+        // Bbox shift: if the imported group's bounding box overlaps the existing
+        // canvas, shift the whole group right so nodes don't stack invisibly.
+        // Vertical alignment is preserved by matching the existing top edge.
         let shifted = remapped;
         if (curNodes.length > 0) {
           const exMaxX = Math.max(...curNodes.map(n => n.x + (n.w || 180)));
@@ -525,7 +568,10 @@ export default function MindMap() {
         const importBg = data.background || undefined;
         const importSettings = data.settings || undefined;
         if (importBg || importSettings) {
-          // Stamp pre-import state onto current history entry so a single undo reverts everything
+          // History stamping: mutate the CURRENT history entry to store the
+          // pre-import background/settings before pushing the post-import entry.
+          // This makes a single Ctrl+Z revert both the structural change and
+          // the style change — without it the user would need two undos.
           if (hist.current[histIdx.current]) {
             hist.current[histIdx.current] = {
               ...hist.current[histIdx.current],
@@ -797,6 +843,12 @@ export default function MindMap() {
   }, [lastDeletedMapInfo]);
 
   // ── Supabase sync ─────────────────────────────────────────────────────────────
+
+  // Upserts maps to Supabase. Intentionally does NOT bulk-delete remote rows
+  // that are absent from the local list. A bulk delete ("delete all mine
+  // except these IDs") caused map resurrection: Device B would re-upload a
+  // map that Device A had just deleted, because B's syncUp ran after A's
+  // targeted delete. Explicit deletion is handled in deleteMap() instead.
   const syncUp = useCallback(async (mapsToSync, userId) => {
     if (!userId || mapsToSync.length === 0) return;
     setSyncing(true);
@@ -805,6 +857,8 @@ export default function MindMap() {
       visibility: m.visibility || "private",
       share_token: m.shareToken || null,
       data: { nodes: m.nodes || [], edges: m.edges || [], background: m.background || DEFAULT_BG, settings: m.settings || DEFAULT_SETTINGS },
+      // updatedAt is stamped in the save effect so it reflects when the user
+      // last edited — not when this network request fired.
       updated_at: m.updatedAt || new Date().toISOString(),
     }));
     const { error } = await supabase.from("maps").upsert(rows, { onConflict: "id" });
@@ -812,11 +866,22 @@ export default function MindMap() {
     setSyncing(false);
   }, []);
 
+  // 2 s debounce prevents hammering Supabase on every drag frame or keystroke
+  // while still uploading within seconds of the user pausing. Cloud sync is
+  // not on the critical path for local responsiveness.
   const deferSync = useCallback((mapsToSync, userId) => {
     clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => syncUp(mapsToSync, userId), 2000);
   }, [syncUp]);
 
+  // Merge strategy:
+  //   1. Fetch all remote maps for this user.
+  //   2. Immediately delete any whose IDs are in the local deleted-IDs cache
+  //      (zombies that re-appeared from another device's earlier syncUp).
+  //   3. For maps present on both sides, keep whichever has the later
+  //      updated_at timestamp — resolves concurrent edits without a UI.
+  //   4. Append local-only maps (not on server, not deleted) and upload them.
+  //   5. Preserve the currently active map ID so the view doesn't jump.
   const syncDown = useCallback(async (userId) => {
     setSyncing(true);
     const { data, error } = await supabase.from("maps").select("*").eq("user_id", userId).order("updated_at", { ascending: false });
@@ -825,7 +890,7 @@ export default function MindMap() {
 
     const deletedIds = getDeletedIds();
 
-    // Delete any zombies — maps we deleted locally that came back from remote
+    // Evict zombies — remote rows for maps this device already deleted.
     const zombies = (data || []).filter(row => deletedIds.has(row.id));
     if (zombies.length > 0) {
       await Promise.all(zombies.map(row => supabase.from("maps").delete().eq("id", row.id)));
@@ -845,7 +910,9 @@ export default function MindMap() {
       const remoteIds = new Set(remoteMaps.map(m => m.id));
       const localById = new Map(mapsRef.current.map(m => [m.id, m]));
 
-      // Prefer newer version for maps present on both sides
+      // Timestamp-based conflict resolution: local version wins when it is
+      // newer (i.e., the user edited on this device after the last sync),
+      // preventing syncDown from overwriting unsaved in-progress work.
       const mergedMaps = remoteMaps.map(remote => {
         const local = localById.get(remote.id);
         if (!local) return remote;
@@ -897,6 +964,21 @@ export default function MindMap() {
   }, []);
 
   // ── Effects ───────────────────────────────────────────────────────────────────
+
+  // Persists state to localStorage and queues a cloud sync.
+  //
+  // Writes are debounced to 400 ms to avoid blocking the main thread on
+  // every drag frame — synchronous JSON.stringify + localStorage.setItem on
+  // large maps caused visible jank on iOS.
+  //
+  // The beforeunload listener is added with { once: true } on every effect
+  // run and cleaned up in the return so it never accumulates duplicates.
+  // It flushes the debounce buffer immediately before the page closes.
+  //
+  // updatedAt is stamped here (not in syncUp) so the timestamp reflects when
+  // the user last changed the map, not when the network request fired.
+  // syncDown's timestamp-based merge uses this to decide which device's copy
+  // is newer when resolving concurrent edits.
   useEffect(() => {
     const updatedMaps = maps.map(m =>
       m.id === activeMapId ? { ...m, nodes, edges, background, settings, updatedAt: new Date().toISOString() } : m
@@ -925,6 +1007,10 @@ export default function MindMap() {
     return () => subscription.unsubscribe();
   }, [syncDown]);
 
+  // Re-syncs when the user switches back to this tab from another window.
+  // Handles the common pattern of editing on phone, returning to desktop —
+  // without this, the desktop tab shows stale data until manual refresh.
+  // The !document.hidden guard prevents a spurious sync on tab switch-away.
   useEffect(() => {
     const onVisible = () => {
       if (!document.hidden && userRef.current) syncDown(userRef.current.id);
@@ -965,7 +1051,14 @@ export default function MindMap() {
     }
   }, [selected, sidebarTab]);
 
-  // Async size tracking via ResizeObserver — avoids forced layout on every render
+  // Two-effect pattern for ResizeObserver:
+  //   First effect (no deps) creates the observer instance once. It reads
+  //   borderBoxSize from the entry — synchronously reading offsetHeight would
+  //   trigger forced layout on every resize notification.
+  //   Second effect (dep: nodes.length) reconnects the observer whenever the
+  //   node set grows or shrinks, ensuring newly added nodes are observed.
+  //   Splitting them keeps the observer instance stable while still reacting
+  //   to structural changes.
   const _roRef = useRef(null);
   useEffect(() => {
     _roRef.current = new ResizeObserver(entries => {
@@ -1025,7 +1118,11 @@ export default function MindMap() {
     return () => window.removeEventListener("resize", handle);
   }, []);
 
-  // Touch handler
+  // Touch handler for single-finger drag/pan and two-finger pinch-zoom.
+  // Registered imperatively (not via JSX) because React's synthetic event
+  // system does not support { passive: false } on touchmove, which is
+  // required to call preventDefault() in onMove to prevent the browser's
+  // native scroll during canvas interaction.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1040,6 +1137,11 @@ export default function MindMap() {
       return null;
     }
     function onStart(e) {
+      // preventDefault is intentionally absent here. The canvas element has
+      // `touch-action: none` CSS, which tells the browser to suppress its
+      // native pan/zoom without JS intervention. Calling preventDefault() on
+      // touchstart would also block the synthetic click events the browser
+      // generates from taps, breaking button presses and node selection.
       if (e.touches.length === 1) {
         const t = e.touches[0];
         const nid = nodeIdFromEl(e.target);
@@ -1057,6 +1159,10 @@ export default function MindMap() {
       }
     }
     function onMove(e) {
+      // RAF + pending slot pattern: every touch move event overwrites the
+      // pending slot. A single requestAnimationFrame drains it each frame.
+      // This prevents queuing dozens of setState calls per frame when the
+      // finger moves faster than the browser can paint, avoiding visible lag.
       if (e.touches.length === 1) {
         const t = e.touches[0];
         pending = { n: 1, x: t.clientX, y: t.clientY };
@@ -1079,6 +1185,9 @@ export default function MindMap() {
           const d = Math.hypot(m.x0-m.x1, m.y0-m.y1);
           const nz = Math.min(3, Math.max(0.2, pinch.z0*(d/pinch.d0)));
           setZoom(nz);
+          // Keep the pinch midpoint (pivot) fixed in screen space while zooming.
+          // Formula: newPan = pivot - (pivot - oldPan) * (newZoom / oldZoom)
+          // Derived from: (pivot - pan) / zoom = canvas_coord = constant.
           setPan({ x: pinch.mx-(pinch.mx-pinch.p0.x)*(nz/pinch.z0), y: pinch.my-(pinch.my-pinch.p0.y)*(nz/pinch.z0) });
         }
       });
@@ -1230,6 +1339,10 @@ export default function MindMap() {
         if (prev) {
           const x0 = Math.min(prev.x0, prev.x1), x1 = Math.max(prev.x0, prev.x1);
           const y0 = Math.min(prev.y0, prev.y1), y1 = Math.max(prev.y0, prev.y1);
+          // AABB overlap test: node intersects selection box if there is no
+          // separating gap on either axis. Equivalent to:
+          //   node.left < sel.right && node.right > sel.left (x)
+          //   node.top  < sel.bot   && node.bot   > sel.top  (y)
           const inside = nodesRef.current.filter(n =>
             n.x < x1 && n.x + (n.w || 180) > x0 && n.y < y1 && n.y + (n.h || 44) > y0
           ).map(n => n.id);
@@ -1244,6 +1357,11 @@ export default function MindMap() {
     setIsPanning(false); setPanStart(null); setDragging(null);
   }, [dragging]);
 
+  // DECLARATION ORDER IS LOAD-BEARING. onWheel's useCallback dep array
+  // references zoomBy. In Vite's production bundle the minifier evaluates
+  // dep arrays eagerly; if zoomBy were declared *after* onWheel with const,
+  // it would be in the Temporal Dead Zone at that point and crash with a
+  // ReferenceError. zoomTo → zoomBy → onWheel must appear in this order.
   const zoomTo = useCallback((nz, pivotX, pivotY) => {
     if (!canvasRef.current) return;
     nz = Math.min(3, Math.max(0.2, nz));
@@ -1252,6 +1370,7 @@ export default function MindMap() {
     const px = pivotX ?? w / 2, py = pivotY ?? h / 2;
     const p = panRef.current;
     setZoom(nz);
+    // Same pivot-stability formula as pinch zoom — see touch handler comment.
     setPan({ x: px - (px - p.x) * (nz / prev), y: py - (py - p.y) * (nz / prev) });
   }, []);
 
@@ -1343,6 +1462,13 @@ export default function MindMap() {
     pushHistory(nodesRef.current, ne);
   }, [selected, pushHistory]);
 
+  // Grid-based layout that eliminates node overlap while preserving rough
+  // spatial relationships. Nodes are processed in diagonal order (ascending
+  // x+y) so that top-left nodes are placed first, keeping their positions
+  // stable. For each node the algorithm searches outward in expanding rings
+  // (radius 0, 1, 2, …) until it finds an unoccupied grid cell — this is
+  // O(n²) in the worst case but in practice terminates at radius 0 or 1 for
+  // most nodes on a non-overlapping canvas.
   const autoSort = useCallback(() => {
     const curNodes = nodesRef.current;
     if (curNodes.length === 0) return;
@@ -1352,7 +1478,6 @@ export default function MindMap() {
     const cellH = Math.max(...curNodes.map(n => n.h || 44)) + gapY;
     const occupied = new Set();
     const assignments = new Map();
-    // Process in diagonal order so nodes keep their relative positions
     const sorted = [...curNodes].sort((a, b) => (a.x + a.y) - (b.x + b.y));
     for (const n of sorted) {
       const baseCol = Math.round(n.x / cellW);
@@ -1361,6 +1486,7 @@ export default function MindMap() {
       for (let radius = 0; radius <= 30 && !placed; radius++) {
         for (let dc = -radius; dc <= radius && !placed; dc++) {
           for (let dr = -radius; dr <= radius && !placed; dr++) {
+            // Only visit cells on the perimeter of the ring, not interior.
             if (Math.max(Math.abs(dc), Math.abs(dr)) !== radius) continue;
             const key = `${baseCol + dc},${baseRow + dr}`;
             if (!occupied.has(key)) {
@@ -1396,6 +1522,13 @@ export default function MindMap() {
     setZoom(nz);
     setPan({ x: (ww-(maxX-minX)*nz)/2-minX*nz, y: (wh-(maxY-minY)*nz)/2-minY*nz });
   }, [nodes]);
+
+  // centerView closes over `nodes`, so it produces a new function reference
+  // on every node edit. Putting it directly in the auto-center effect's dep
+  // array would re-center on every drag or keystroke. Instead, the latest
+  // version is stored in a ref that the fire-once effect (dep: activeMapId)
+  // reads via the ref — re-centers only on map switch. The RAF defers
+  // until after the canvas has laid out and reported its clientWidth/Height.
   const centerViewRef = useRef(centerView);
   useEffect(() => { centerViewRef.current = centerView; }, [centerView]);
   useEffect(() => {
@@ -1468,6 +1601,10 @@ export default function MindMap() {
           {background.imageUrl
             ? <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${background.imageUrl})`, backgroundSize: "cover", backgroundPosition: "center", pointerEvents: "none" }}/>
             : background.type !== "plain" && (
+                // Infinite-grid illusion: the pattern origin is set to
+                // pan%(tileSize) instead of pan itself. A single small tile
+                // covers the viewport regardless of canvas size; modulo keeps
+                // the origin within one tile so the seam is never visible.
                 <svg className="grid-bg" width="100%" height="100%">
                   <defs>
                     {background.type === "grid"
